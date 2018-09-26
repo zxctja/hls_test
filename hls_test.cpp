@@ -2,6 +2,21 @@
 #include <stdlib.h>
 #include <ap_int.h>
 
+typedef int64_t score_t;
+
+typedef struct {
+  score_t D, SD;              // Distortion, spectral distortion
+  score_t H, R, score;        // header bits, rate, score.
+  int16_t y_dc_levels[16];    // Quantized levels for luma-DC, luma-AC, chroma.
+  int16_t y_ac_levels[16][16];
+  int16_t uv_levels[4 + 4][16];
+  int mode_i16;               // mode number for intra16 prediction
+  uint8_t modes_i4[16];       // mode numbers for intra4 predictions
+  int mode_uv;                // mode number of chroma prediction
+  uint32_t nz;                // non-zero blocks
+  int8_t derr[2][3];          // DC diffusion errors for U/V for blocks #1/2/3
+} VP8ModeScore;
+
 void Fill(uint8_t* dst, int value, int size) {
 #pragma HLS inline
   int i,j;
@@ -656,8 +671,64 @@ int ReconstructIntra4(int16_t levels[16], const uint8_t y_p[16],
   return nz;
 }
 
+typedef int8_t DError[2 /* u/v */][2 /* top or left */];
+
+#define C1 7    // fraction of error sent to the 4x4 block below
+#define C2 8    // fraction of error sent to the 4x4 block on the right
+#define DSHIFT 4
+#define DSCALE 1   // storage descaling, needed to make the error fit int8_t
+
+static int QuantizeSingle(int16_t* const v, const VP8Matrix* const mtx) {
+  int V = *v;
+  const int sign = (V < 0);
+  if (sign) V = -V;
+  if (V > (int)mtx->zthresh_[0]) {
+    const int qV = QUANTDIV(V, mtx->iq_[0], mtx->bias_[0]) * mtx->q_[0];
+    const int err = (V - qV);
+    *v = sign ? -qV : qV;
+    return (sign ? -err : err) >> DSCALE;
+  } else {
+  *v = 0;
+  return (sign ? -V : V) >> DSCALE;
+  }
+}
+
+static void CorrectDCValues(DError top_derr[1024], DError left_derr, int x,
+                            const VP8Matrix* const mtx,
+                            int16_t tmp[][16], int8_t derr[2][3]) {
+  //         | top[0] | top[1]
+  // --------+--------+---------
+  // left[0] | tmp[0]   tmp[1]  <->   err0 err1
+  // left[1] | tmp[2]   tmp[3]        err2 err3
+  //
+  // Final errors {err1,err2,err3} are preserved and later restored
+  // as top[]/left[] on the next block.
+  int ch;
+  for (ch = 0; ch <= 1; ++ch) {
+#pragma HLS unroll
+    const int8_t* const top = top_derr[x][ch];
+    const int8_t* const left = left_derr[ch];
+    int16_t (* const c)[16] = &tmp[ch * 4];
+    int err0, err1, err2, err3;
+    c[0][0] += (C1 * top[0] + C2 * left[0]) >> (DSHIFT - DSCALE);
+    err0 = QuantizeSingle(&c[0][0], mtx);
+    c[1][0] += (C1 * top[1] + C2 * err0) >> (DSHIFT - DSCALE);
+    err1 = QuantizeSingle(&c[1][0], mtx);
+    c[2][0] += (C1 * err0 + C2 * left[1]) >> (DSHIFT - DSCALE);
+    err2 = QuantizeSingle(&c[2][0], mtx);
+    c[3][0] += (C1 * err1 + C2 * err2) >> (DSHIFT - DSCALE);
+    err3 = QuantizeSingle(&c[3][0], mtx);
+    // error 'err' is bounded by mtx->q_[0] which is 132 at max. Hence
+    // err >> DSCALE will fit in an int8_t type if DSCALE>=1.
+    derr[ch][0] = (int8_t)err1;
+    derr[ch][1] = (int8_t)err2;
+    derr[ch][2] = (int8_t)err3;
+  }
+}
+
 int ReconstructUV(int16_t uv_levels[8][16],const uint8_t uv_p[8*16],
-		const uint8_t uv_src[8*16], uint8_t uv_out[8*16], VP8Matrix uv) {
+		const uint8_t uv_src[8*16], uint8_t uv_out[8*16], VP8Matrix uv,
+		DError top_derr[1024], DError left_derr, int x, int8_t derr[2][3]) {
 #pragma HLS PIPELINE
 #pragma HLS ARRAY_PARTITION variable=uv.sharpen_ complete dim=1
 #pragma HLS ARRAY_PARTITION variable=uv.zthresh_ complete dim=1
@@ -668,6 +739,10 @@ int ReconstructUV(int16_t uv_levels[8][16],const uint8_t uv_p[8*16],
 #pragma HLS ARRAY_PARTITION variable=uv_out complete dim=1
 #pragma HLS ARRAY_PARTITION variable=uv_src complete dim=1
 #pragma HLS ARRAY_PARTITION variable=uv_p complete dim=1
+#pragma HLS ARRAY_PARTITION variable=top_derr complete dim=2
+#pragma HLS ARRAY_PARTITION variable=top_derr complete dim=3
+#pragma HLS ARRAY_PARTITION variable=left_derr complete dim=0
+#pragma HLS ARRAY_PARTITION variable=derr complete dim=0
   int nz = 0;
   int n;
   int16_t tmp[8][16];
@@ -700,7 +775,7 @@ int ReconstructUV(int16_t uv_levels[8][16],const uint8_t uv_p[8*16],
 	  FTransform_C(tmp_src[n], tmp_p[n], tmp[n]);
   }
 
-  //CorrectDCValues(it, &dqm->uv_, tmp, rd);
+  CorrectDCValues(top_derr, left_derr, x, &uv, tmp, derr);
 
 
   for (n = 0; n < 8; n++) {
@@ -726,21 +801,6 @@ int ReconstructUV(int16_t uv_levels[8][16],const uint8_t uv_p[8*16],
 
   return (nz << 16);
 }
-
-typedef int64_t score_t;
-
-typedef struct {
-  score_t D, SD;              // Distortion, spectral distortion
-  score_t H, R, score;        // header bits, rate, score.
-  int16_t y_dc_levels[16];    // Quantized levels for luma-DC, luma-AC, chroma.
-  int16_t y_ac_levels[16][16];
-  int16_t uv_levels[4 + 4][16];
-  int mode_i16;               // mode number for intra16 prediction
-  uint8_t modes_i4[16];       // mode numbers for intra4 predictions
-  int mode_uv;                // mode number of chroma prediction
-  uint32_t nz;                // non-zero blocks
-  int8_t derr[2][3];          // DC diffusion errors for U/V for blocks #1/2/3
-} VP8ModeScore;
 
 static const uint16_t kWeightY[16] = {
   38, 32, 20, 9, 32, 28, 17, 7, 20, 17, 10, 4, 9, 7, 4, 2
