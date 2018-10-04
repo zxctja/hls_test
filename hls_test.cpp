@@ -1,21 +1,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <ap_int.h>
-
-typedef int64_t score_t;
-
-typedef struct {
-  score_t D, SD;              // Distortion, spectral distortion
-  score_t H, R, score;        // header bits, rate, score.
-  int16_t y_dc_levels[16];    // Quantized levels for luma-DC, luma-AC, chroma.
-  int16_t y_ac_levels[16][16];
-  int16_t uv_levels[4 + 4][16];
-  int mode_i16;               // mode number for intra16 prediction
-  uint8_t modes_i4[16];       // mode numbers for intra4 predictions
-  int mode_uv;                // mode number of chroma prediction
-  uint32_t nz;                // non-zero blocks
-  int8_t derr[2][3];          // DC diffusion errors for U/V for blocks #1/2/3
-} VP8ModeScore;
+#include <cstring>
 
 void Fill(uint8_t* dst, int value, int size) {
 #pragma HLS inline
@@ -96,24 +82,20 @@ void TrueMotion(uint8_t* dst, uint8_t* left, uint8_t* top, uint8_t top_left, int
   }
 }
 
-void Intra16Preds_C(uint8_t YPred_DC[16*16],uint8_t YPred_VE[16*16],uint8_t YPred_HE[16*16],uint8_t YPred_TM[16*16],
-                           uint8_t left_y[16], uint8_t top_y[16], uint8_t top_left_y, int x, int y) {
+void Intra16Preds_C(uint8_t YPred[4][16*16], uint8_t left_y[16],
+		uint8_t top_y[16], uint8_t top_left_y, int x, int y) {
 #pragma HLS PIPELINE
 #pragma HLS ARRAY_PARTITION variable=top_y complete dim=1
 #pragma HLS ARRAY_PARTITION variable=left_y complete dim=1
-#pragma HLS ARRAY_PARTITION variable=YPred_DC complete dim=1
-#pragma HLS ARRAY_PARTITION variable=YPred_VE complete dim=1
-#pragma HLS ARRAY_PARTITION variable=YPred_HE complete dim=1
-#pragma HLS ARRAY_PARTITION variable=YPred_TM complete dim=1
-  DCMode(YPred_DC, left_y, top_y, 16, 16, 5);
-  VerticalPred(YPred_VE, top_y, 16);
-  HorizontalPred(YPred_HE, left_y, 16);
-  TrueMotion(YPred_TM, left_y, top_y, top_left_y, 16, x, y);
+#pragma HLS ARRAY_PARTITION variable=YPred complete dim=0
+  DCMode(YPred[0], left_y, top_y, 16, 16, 5);
+  VerticalPred(YPred[1], top_y, 16);
+  HorizontalPred(YPred[2], left_y, 16);
+  TrueMotion(YPred[3], left_y, top_y, top_left_y, 16, x, y);
 }
 
 void IntraChromaPreds_C(
-		uint8_t UPred_DC[8*8],uint8_t UPred_VE[8*8],uint8_t UPred_HE[8*8],uint8_t UPred_TM[8*8],
-		uint8_t VPred_DC[8*8],uint8_t VPred_VE[8*8],uint8_t VPred_HE[8*8],uint8_t VPred_TM[8*8],
+		uint8_t UVPred[8][8*8],
         uint8_t left_u[8], uint8_t top_u[8], uint8_t top_left_u,
 		uint8_t left_v[8], uint8_t top_v[8], uint8_t top_left_v,
 		int x, int y) {
@@ -122,24 +104,17 @@ void IntraChromaPreds_C(
 #pragma HLS ARRAY_PARTITION variable=left_u complete dim=1
 #pragma HLS ARRAY_PARTITION variable=top_v complete dim=1
 #pragma HLS ARRAY_PARTITION variable=left_v complete dim=1
-#pragma HLS ARRAY_PARTITION variable=UPred_DC complete dim=1
-#pragma HLS ARRAY_PARTITION variable=UPred_VE complete dim=1
-#pragma HLS ARRAY_PARTITION variable=UPred_HE complete dim=1
-#pragma HLS ARRAY_PARTITION variable=UPred_TM complete dim=1
-#pragma HLS ARRAY_PARTITION variable=VPred_DC complete dim=1
-#pragma HLS ARRAY_PARTITION variable=VPred_VE complete dim=1
-#pragma HLS ARRAY_PARTITION variable=VPred_HE complete dim=1
-#pragma HLS ARRAY_PARTITION variable=VPred_TM complete dim=1
+#pragma HLS ARRAY_PARTITION variable=UVPred complete dim=0
   // U block
-  DCMode(UPred_DC, left_u, top_u, 8, 8, 4);
-  VerticalPred(UPred_VE, top_u, 8);
-  HorizontalPred(UPred_HE, left_u, 8);
-  TrueMotion(UPred_TM, left_u, top_u, top_left_u, 8, x, y);
+  DCMode(UVPred[0], left_u, top_u, 8, 8, 4);
+  VerticalPred(UVPred[1], top_u, 8);
+  HorizontalPred(UVPred[2], left_u, 8);
+  TrueMotion(UVPred[3], left_u, top_u, top_left_u, 8, x, y);
   // V block
-  DCMode(VPred_DC, left_v, top_v, 8, 8, 4);
-  VerticalPred(VPred_VE, top_v, 8);
-  HorizontalPred(VPred_HE, left_v, 8);
-  TrueMotion(VPred_TM, left_v, top_v, top_left_v, 8, x, y);
+  DCMode(UVPred[4], left_v, top_v, 8, 8, 4);
+  VerticalPred(UVPred[5], top_v, 8);
+  HorizontalPred(UVPred[6], left_v, 8);
+  TrueMotion(UVPred[7], left_v, top_v, top_left_v, 8, x, y);
 }
 
 // luma 4x4 prediction
@@ -321,33 +296,23 @@ void TM4(uint8_t* dst, uint8_t* top, uint8_t* left, uint8_t top_left) {
 }
 
 void Intra4Preds_C(
-		uint8_t Pred_DC4[16], uint8_t Pred_TM4[16], uint8_t Pred_VE4[16], uint8_t Pred_HE4[16], uint8_t Pred_RD4[16],
-		uint8_t Pred_VR4[16], uint8_t Pred_LD4[16], uint8_t Pred_VL4[16], uint8_t Pred_HD4[16], uint8_t Pred_HU4[16],
-		uint8_t left[4], uint8_t top_left, uint8_t top[4], uint8_t top_right[4]) {
-#pragma HLS PIPELINE
+		uint8_t Pred[10][16], uint8_t left[4], uint8_t top_left, uint8_t top[4], uint8_t top_right[4]) {
+//#pragma HLS PIPELINE
 #pragma HLS ARRAY_PARTITION variable=left complete dim=1
 #pragma HLS ARRAY_PARTITION variable=top complete dim=1
 #pragma HLS ARRAY_PARTITION variable=top_right complete dim=1
-#pragma HLS ARRAY_PARTITION variable=Pred_DC4 complete dim=1
-#pragma HLS ARRAY_PARTITION variable=Pred_TM4 complete dim=1
-#pragma HLS ARRAY_PARTITION variable=Pred_VE4 complete dim=1
-#pragma HLS ARRAY_PARTITION variable=Pred_HE4 complete dim=1
-#pragma HLS ARRAY_PARTITION variable=Pred_RD4 complete dim=1
-#pragma HLS ARRAY_PARTITION variable=Pred_VR4 complete dim=1
-#pragma HLS ARRAY_PARTITION variable=Pred_LD4 complete dim=1
-#pragma HLS ARRAY_PARTITION variable=Pred_VL4 complete dim=1
-#pragma HLS ARRAY_PARTITION variable=Pred_HD4 complete dim=1
-#pragma HLS ARRAY_PARTITION variable=Pred_HU4 complete dim=1
-  DC4(Pred_DC4, top, left);
-  TM4(Pred_TM4, top, left, top_left);
-  VE4(Pred_VE4, top_left, top, top_right);
-  HE4(Pred_HE4, left, top_left);
-  RD4(Pred_RD4, left, top_left, top);
-  VR4(Pred_VR4, left, top_left, top);
-  LD4(Pred_LD4, top, top_right);
-  VL4(Pred_VL4, top, top_right);
-  HD4(Pred_HD4, left, top_left, top);
-  HU4(Pred_HU4, top);
+#pragma HLS ARRAY_PARTITION variable=Pred complete dim=0
+
+  DC4(Pred[0], top, left);
+  TM4(Pred[1], top, left, top_left);
+  VE4(Pred[2], top_left, top, top_right);
+  HE4(Pred[3], left, top_left);
+  RD4(Pred[4], left, top_left, top);
+  VR4(Pred[5], left, top_left, top);
+  LD4(Pred[6], top, top_right);
+  VL4(Pred[7], top, top_right);
+  HD4(Pred[8], left, top_left, top);
+  HU4(Pred[9], top);
 }
 
 typedef struct VP8Matrix {
@@ -549,7 +514,7 @@ void ITransformOne(const uint8_t* ref, const int16_t* in,
 int ReconstructIntra16(
 		const uint8_t YPred[16*16], const uint8_t Ysrc[16*16], uint8_t Yout[16*16],
 		int16_t y_ac_levels[16][16], int16_t y_dc_levels[16], VP8Matrix y1, VP8Matrix y2) {
-#pragma HLS PIPELINE
+//#pragma HLS PIPELINE
 #pragma HLS ARRAY_PARTITION variable=y1.sharpen_ complete dim=1
 #pragma HLS ARRAY_PARTITION variable=y1.zthresh_ complete dim=1
 #pragma HLS ARRAY_PARTITION variable=y1.bias_ complete dim=1
@@ -570,12 +535,6 @@ int ReconstructIntra16(
   int n;
   int16_t tmp[16][16], dc_tmp[16], tmp_dc[16];
   uint8_t tmp_src[16][16], tmp_pred[16][16], tmp_out[16][16];
-#pragma HLS ARRAY_PARTITION variable=tmp_src complete dim=0
-#pragma HLS ARRAY_PARTITION variable=tmp_dc complete dim=1
-#pragma HLS ARRAY_PARTITION variable=dc_tmp complete dim=1
-#pragma HLS ARRAY_PARTITION variable=tmp_out complete dim=0
-#pragma HLS ARRAY_PARTITION variable=tmp_pred complete dim=0
-#pragma HLS ARRAY_PARTITION variable=tmp complete dim=0
 
   const uint16_t VP8Scan[16] = {  // Luma
     0 +  0 * 16,  4 +  0 * 16, 8 +  0 * 16, 12 +  0 * 16,
@@ -583,6 +542,14 @@ int ReconstructIntra16(
     0 +  8 * 16,  4 +  8 * 16, 8 +  8 * 16, 12 +  8 * 16,
     0 + 12 * 16,  4 + 12 * 16, 8 + 12 * 16, 12 + 12 * 16,
   };
+
+#pragma HLS ARRAY_PARTITION variable=tmp_src complete dim=0
+#pragma HLS ARRAY_PARTITION variable=tmp_dc complete dim=1
+#pragma HLS ARRAY_PARTITION variable=dc_tmp complete dim=1
+#pragma HLS ARRAY_PARTITION variable=tmp_out complete dim=0
+#pragma HLS ARRAY_PARTITION variable=tmp_pred complete dim=0
+#pragma HLS ARRAY_PARTITION variable=tmp complete dim=0
+#pragma HLS ARRAY_PARTITION variable=VP8Scan complete dim=1
 
   int i,j;
   for(n = 0; n < 16; n++){
@@ -802,6 +769,21 @@ int ReconstructUV(int16_t uv_levels[8][16],const uint8_t uv_p[8*16],
   return (nz << 16);
 }
 
+typedef int64_t score_t;
+
+typedef struct {
+  score_t D, SD;              // Distortion, spectral distortion
+  score_t H, R, score;        // header bits, rate, score.
+  int16_t y_dc_levels[16];    // Quantized levels for luma-DC, luma-AC, chroma.
+  int16_t y_ac_levels[16][16];
+  int16_t uv_levels[4 + 4][16];
+  int mode_i16;               // mode number for intra16 prediction
+  uint8_t modes_i4[16];       // mode numbers for intra4 predictions
+  int mode_uv;                // mode number of chroma prediction
+  uint32_t nz;                // non-zero blocks
+  int8_t derr[2][3];          // DC diffusion errors for U/V for blocks #1/2/3
+} VP8ModeScore;
+
 static const uint16_t kWeightY[16] = {
   38, 32, 20, 9, 32, 28, 17, 7, 20, 17, 10, 4, 9, 7, 4, 2
 };
@@ -915,512 +897,815 @@ static int Disto16x16_C(const uint8_t* const a, const uint8_t* const b,
 
 const uint16_t VP8FixedCostsI16[4] = { 663, 919, 872, 919 };
 
-#define BIT(nz, n) (!!((nz) & (1 << (n))))
+typedef struct {
+  VP8Matrix y1_, y2_, uv_;  // quantization matrices
+  int alpha_;      // quant-susceptibility, range [-127,127]. Zero is neutral.
+                   // Lower values indicate a lower risk of blurriness.
+  int beta_;       // filter-susceptibility, range [0,255].
+  int quant_;      // final segment quantizer.
+  int fstrength_;  // final in-loop filtering strength
+  int max_edge_;   // max edge delta (for filtering strength)
+  int min_disto_;  // minimum distortion required to trigger filtering record
+  // reactivities
+  int lambda_i16_, lambda_i4_, lambda_uv_;
+  int lambda_mode_, lambda_trellis_, tlambda_;
+  int lambda_trellis_i16_, lambda_trellis_i4_, lambda_trellis_uv_;
 
-void VP8IteratorNzToBytes(const int tnz, const int lnz, int top_nz[9], int left_nz[9]) {
-  // Top-Y
-  top_nz[0] = BIT(tnz, 12);
-  top_nz[1] = BIT(tnz, 13);
-  top_nz[2] = BIT(tnz, 14);
-  top_nz[3] = BIT(tnz, 15);
-  // Top-U
-  top_nz[4] = BIT(tnz, 18);
-  top_nz[5] = BIT(tnz, 19);
-  // Top-V
-  top_nz[6] = BIT(tnz, 22);
-  top_nz[7] = BIT(tnz, 23);
-  // DC
-  top_nz[8] = BIT(tnz, 24);
+  // lambda values for distortion-based evaluation
+  score_t i4_penalty_;   // penalty for using Intra4
+} VP8SegmentInfo;
 
-  // left-Y
-  left_nz[0] = BIT(lnz,  3);
-  left_nz[1] = BIT(lnz,  7);
-  left_nz[2] = BIT(lnz, 11);
-  left_nz[3] = BIT(lnz, 15);
-  // left-U
-  left_nz[4] = BIT(lnz, 17);
-  left_nz[5] = BIT(lnz, 19);
-  // left-V
-  left_nz[6] = BIT(lnz, 21);
-  left_nz[7] = BIT(lnz, 23);
-  // left-DC is special, iterated separately
+// intra prediction modes
+enum { B_DC_PRED = 0,   // 4x4 modes
+       B_TM_PRED = 1,
+       B_VE_PRED = 2,
+       B_HE_PRED = 3,
+       B_RD_PRED = 4,
+       B_VR_PRED = 5,
+       B_LD_PRED = 6,
+       B_VL_PRED = 7,
+       B_HD_PRED = 8,
+       B_HU_PRED = 9,
+       NUM_BMODES = B_HU_PRED + 1 - B_DC_PRED,  // = 10
+
+       // Luma16 or UV modes
+       DC_PRED = B_DC_PRED, V_PRED = B_VE_PRED,
+       H_PRED = B_HE_PRED, TM_PRED = B_TM_PRED,
+       B_PRED = NUM_BMODES,   // refined I4x4 mode
+       NUM_PRED_MODES = 4,
+
+       // special modes
+       B_DC_PRED_NOTOP = 4,
+       B_DC_PRED_NOLEFT = 5,
+       B_DC_PRED_NOTOPLEFT = 6,
+       NUM_B_DC_MODES = 7 };
+
+#define RD_DISTO_MULT      256  // distortion multiplier (equivalent of lambda)
+
+static void SetRDScore(int lambda, VP8ModeScore* const rd) {
+  rd->score = (rd->R + rd->H) * lambda + RD_DISTO_MULT * (rd->D + rd->SD);
 }
 
-enum { MB_FEATURE_TREE_PROBS = 3,
-       NUM_MB_SEGMENTS = 4,
-       NUM_REF_LF_DELTAS = 4,
-       NUM_MODE_LF_DELTAS = 4,    // I4x4, ZERO, *, SPLIT
-       MAX_NUM_PARTITIONS = 8,
-       // Probabilities
-       NUM_TYPES = 4,   // 0: i16-AC,  1: i16-DC,  2:chroma-AC,  3:i4-AC
-       NUM_BANDS = 8,
-       NUM_CTX = 3,
-       NUM_PROBAS = 11
-     };
-
-typedef uint32_t proba_t;   // 16b + 16b
-typedef uint8_t ProbaArray[NUM_CTX][NUM_PROBAS];
-typedef proba_t StatsArray[NUM_CTX][NUM_PROBAS];
-typedef uint16_t CostArrayMap[16][NUM_CTX][MAX_VARIABLE_LEVEL + 1];
-typedef const uint16_t (*CostArrayPtr)[NUM_CTX][MAX_VARIABLE_LEVEL + 1];   // for easy casting
-
-static int SetResidualCoeffs_C(const int16_t const coeffs[16]) {
-#pragma HLS INLINE off
-  int n, last;
-  last = -1;
-  for (n = 15; n >= 0; --n) {
-#pragma HLS unroll
-    if (coeffs[n]) {
-      last = n;
-      break;
-    }
-  }
-  return last;
+static void StoreMaxDelta(VP8SegmentInfo* const dqm, const int16_t DCs[16]) {
+  // We look at the first three AC coefficients to determine what is the average
+  // delta between each sub-4x4 block.
+  const int v0 = abs(DCs[1]);
+  const int v1 = abs(DCs[2]);
+  const int v2 = abs(DCs[4]);
+  int max_v = (v1 > v0) ? v1 : v0;
+  max_v = (v2 > max_v) ? v2 : max_v;
+  if (max_v > dqm->max_edge_) dqm->max_edge_ = max_v;
 }
 
-const uint16_t VP8EntropyCost[256] = {
-  1792, 1792, 1792, 1536, 1536, 1408, 1366, 1280, 1280, 1216,
-  1178, 1152, 1110, 1076, 1061, 1024, 1024,  992,  968,  951,
-   939,  911,  896,  878,  871,  854,  838,  820,  811,  794,
-   786,  768,  768,  752,  740,  732,  720,  709,  704,  690,
-   683,  672,  666,  655,  647,  640,  631,  622,  615,  607,
-   598,  592,  586,  576,  572,  564,  559,  555,  547,  541,
-   534,  528,  522,  512,  512,  504,  500,  494,  488,  483,
-   477,  473,  467,  461,  458,  452,  448,  443,  438,  434,
-   427,  424,  419,  415,  410,  406,  403,  399,  394,  390,
-   384,  384,  377,  374,  370,  366,  362,  359,  355,  351,
-   347,  342,  342,  336,  333,  330,  326,  323,  320,  316,
-   312,  308,  305,  302,  299,  296,  293,  288,  287,  283,
-   280,  277,  274,  272,  268,  266,  262,  256,  256,  256,
-   251,  248,  245,  242,  240,  237,  234,  232,  228,  226,
-   223,  221,  218,  216,  214,  211,  208,  205,  203,  201,
-   198,  196,  192,  191,  188,  187,  183,  181,  179,  176,
-   175,  171,  171,  168,  165,  163,  160,  159,  156,  154,
-   152,  150,  148,  146,  144,  142,  139,  138,  135,  133,
-   131,  128,  128,  125,  123,  121,  119,  117,  115,  113,
-   111,  110,  107,  105,  103,  102,  100,   98,   96,   94,
-    92,   91,   89,   86,   86,   83,   82,   80,   77,   76,
-    74,   73,   71,   69,   67,   66,   64,   63,   61,   59,
-    57,   55,   54,   52,   51,   49,   47,   46,   44,   43,
-    41,   40,   38,   36,   35,   33,   32,   30,   29,   27,
-    25,   24,   22,   21,   19,   18,   16,   15,   13,   12,
-    10,    9,    7,    6,    4,    3
-};
-
-
-static int VP8BitCost(int bit, uint8_t proba) {
-#pragma HLS INLINE off
-  return !bit ? VP8EntropyCost[proba] : VP8EntropyCost[255 - proba];
+static void CopyScore(VP8ModeScore* const dst, const VP8ModeScore* const src) {
+  dst->D  = src->D;
+  dst->SD = src->SD;
+  dst->R  = src->R;
+  dst->H  = src->H;
+  dst->nz = src->nz;      // note that nz is not accumulated, but just copied.
+  dst->score = src->score;
 }
 
-const uint16_t VP8LevelFixedCosts[MAX_LEVEL + 1] = {
-     0,  256,  256,  256,  256,  432,  618,  630,
-   731,  640,  640,  828,  901,  948, 1021, 1101,
-  1174, 1221, 1294, 1042, 1085, 1115, 1158, 1202,
-  1245, 1275, 1318, 1337, 1380, 1410, 1453, 1497,
-  1540, 1570, 1613, 1280, 1295, 1317, 1332, 1358,
-  1373, 1395, 1410, 1454, 1469, 1491, 1506, 1532,
-  1547, 1569, 1584, 1601, 1616, 1638, 1653, 1679,
-  1694, 1716, 1731, 1775, 1790, 1812, 1827, 1853,
-  1868, 1890, 1905, 1727, 1733, 1742, 1748, 1759,
-  1765, 1774, 1780, 1800, 1806, 1815, 1821, 1832,
-  1838, 1847, 1853, 1878, 1884, 1893, 1899, 1910,
-  1916, 1925, 1931, 1951, 1957, 1966, 1972, 1983,
-  1989, 1998, 2004, 2027, 2033, 2042, 2048, 2059,
-  2065, 2074, 2080, 2100, 2106, 2115, 2121, 2132,
-  2138, 2147, 2153, 2178, 2184, 2193, 2199, 2210,
-  2216, 2225, 2231, 2251, 2257, 2266, 2272, 2283,
-  2289, 2298, 2304, 2168, 2174, 2183, 2189, 2200,
-  2206, 2215, 2221, 2241, 2247, 2256, 2262, 2273,
-  2279, 2288, 2294, 2319, 2325, 2334, 2340, 2351,
-  2357, 2366, 2372, 2392, 2398, 2407, 2413, 2424,
-  2430, 2439, 2445, 2468, 2474, 2483, 2489, 2500,
-  2506, 2515, 2521, 2541, 2547, 2556, 2562, 2573,
-  2579, 2588, 2594, 2619, 2625, 2634, 2640, 2651,
-  2657, 2666, 2672, 2692, 2698, 2707, 2713, 2724,
-  2730, 2739, 2745, 2540, 2546, 2555, 2561, 2572,
-  2578, 2587, 2593, 2613, 2619, 2628, 2634, 2645,
-  2651, 2660, 2666, 2691, 2697, 2706, 2712, 2723,
-  2729, 2738, 2744, 2764, 2770, 2779, 2785, 2796,
-  2802, 2811, 2817, 2840, 2846, 2855, 2861, 2872,
-  2878, 2887, 2893, 2913, 2919, 2928, 2934, 2945,
-  2951, 2960, 2966, 2991, 2997, 3006, 3012, 3023,
-  3029, 3038, 3044, 3064, 3070, 3079, 3085, 3096,
-  3102, 3111, 3117, 2981, 2987, 2996, 3002, 3013,
-  3019, 3028, 3034, 3054, 3060, 3069, 3075, 3086,
-  3092, 3101, 3107, 3132, 3138, 3147, 3153, 3164,
-  3170, 3179, 3185, 3205, 3211, 3220, 3226, 3237,
-  3243, 3252, 3258, 3281, 3287, 3296, 3302, 3313,
-  3319, 3328, 3334, 3354, 3360, 3369, 3375, 3386,
-  3392, 3401, 3407, 3432, 3438, 3447, 3453, 3464,
-  3470, 3479, 3485, 3505, 3511, 3520, 3526, 3537,
-  3543, 3552, 3558, 2816, 2822, 2831, 2837, 2848,
-  2854, 2863, 2869, 2889, 2895, 2904, 2910, 2921,
-  2927, 2936, 2942, 2967, 2973, 2982, 2988, 2999,
-  3005, 3014, 3020, 3040, 3046, 3055, 3061, 3072,
-  3078, 3087, 3093, 3116, 3122, 3131, 3137, 3148,
-  3154, 3163, 3169, 3189, 3195, 3204, 3210, 3221,
-  3227, 3236, 3242, 3267, 3273, 3282, 3288, 3299,
-  3305, 3314, 3320, 3340, 3346, 3355, 3361, 3372,
-  3378, 3387, 3393, 3257, 3263, 3272, 3278, 3289,
-  3295, 3304, 3310, 3330, 3336, 3345, 3351, 3362,
-  3368, 3377, 3383, 3408, 3414, 3423, 3429, 3440,
-  3446, 3455, 3461, 3481, 3487, 3496, 3502, 3513,
-  3519, 3528, 3534, 3557, 3563, 3572, 3578, 3589,
-  3595, 3604, 3610, 3630, 3636, 3645, 3651, 3662,
-  3668, 3677, 3683, 3708, 3714, 3723, 3729, 3740,
-  3746, 3755, 3761, 3781, 3787, 3796, 3802, 3813,
-  3819, 3828, 3834, 3629, 3635, 3644, 3650, 3661,
-  3667, 3676, 3682, 3702, 3708, 3717, 3723, 3734,
-  3740, 3749, 3755, 3780, 3786, 3795, 3801, 3812,
-  3818, 3827, 3833, 3853, 3859, 3868, 3874, 3885,
-  3891, 3900, 3906, 3929, 3935, 3944, 3950, 3961,
-  3967, 3976, 3982, 4002, 4008, 4017, 4023, 4034,
-  4040, 4049, 4055, 4080, 4086, 4095, 4101, 4112,
-  4118, 4127, 4133, 4153, 4159, 4168, 4174, 4185,
-  4191, 4200, 4206, 4070, 4076, 4085, 4091, 4102,
-  4108, 4117, 4123, 4143, 4149, 4158, 4164, 4175,
-  4181, 4190, 4196, 4221, 4227, 4236, 4242, 4253,
-  4259, 4268, 4274, 4294, 4300, 4309, 4315, 4326,
-  4332, 4341, 4347, 4370, 4376, 4385, 4391, 4402,
-  4408, 4417, 4423, 4443, 4449, 4458, 4464, 4475,
-  4481, 4490, 4496, 4521, 4527, 4536, 4542, 4553,
-  4559, 4568, 4574, 4594, 4600, 4609, 4615, 4626,
-  4632, 4641, 4647, 3515, 3521, 3530, 3536, 3547,
-  3553, 3562, 3568, 3588, 3594, 3603, 3609, 3620,
-  3626, 3635, 3641, 3666, 3672, 3681, 3687, 3698,
-  3704, 3713, 3719, 3739, 3745, 3754, 3760, 3771,
-  3777, 3786, 3792, 3815, 3821, 3830, 3836, 3847,
-  3853, 3862, 3868, 3888, 3894, 3903, 3909, 3920,
-  3926, 3935, 3941, 3966, 3972, 3981, 3987, 3998,
-  4004, 4013, 4019, 4039, 4045, 4054, 4060, 4071,
-  4077, 4086, 4092, 3956, 3962, 3971, 3977, 3988,
-  3994, 4003, 4009, 4029, 4035, 4044, 4050, 4061,
-  4067, 4076, 4082, 4107, 4113, 4122, 4128, 4139,
-  4145, 4154, 4160, 4180, 4186, 4195, 4201, 4212,
-  4218, 4227, 4233, 4256, 4262, 4271, 4277, 4288,
-  4294, 4303, 4309, 4329, 4335, 4344, 4350, 4361,
-  4367, 4376, 4382, 4407, 4413, 4422, 4428, 4439,
-  4445, 4454, 4460, 4480, 4486, 4495, 4501, 4512,
-  4518, 4527, 4533, 4328, 4334, 4343, 4349, 4360,
-  4366, 4375, 4381, 4401, 4407, 4416, 4422, 4433,
-  4439, 4448, 4454, 4479, 4485, 4494, 4500, 4511,
-  4517, 4526, 4532, 4552, 4558, 4567, 4573, 4584,
-  4590, 4599, 4605, 4628, 4634, 4643, 4649, 4660,
-  4666, 4675, 4681, 4701, 4707, 4716, 4722, 4733,
-  4739, 4748, 4754, 4779, 4785, 4794, 4800, 4811,
-  4817, 4826, 4832, 4852, 4858, 4867, 4873, 4884,
-  4890, 4899, 4905, 4769, 4775, 4784, 4790, 4801,
-  4807, 4816, 4822, 4842, 4848, 4857, 4863, 4874,
-  4880, 4889, 4895, 4920, 4926, 4935, 4941, 4952,
-  4958, 4967, 4973, 4993, 4999, 5008, 5014, 5025,
-  5031, 5040, 5046, 5069, 5075, 5084, 5090, 5101,
-  5107, 5116, 5122, 5142, 5148, 5157, 5163, 5174,
-  5180, 5189, 5195, 5220, 5226, 5235, 5241, 5252,
-  5258, 5267, 5273, 5293, 5299, 5308, 5314, 5325,
-  5331, 5340, 5346, 4604, 4610, 4619, 4625, 4636,
-  4642, 4651, 4657, 4677, 4683, 4692, 4698, 4709,
-  4715, 4724, 4730, 4755, 4761, 4770, 4776, 4787,
-  4793, 4802, 4808, 4828, 4834, 4843, 4849, 4860,
-  4866, 4875, 4881, 4904, 4910, 4919, 4925, 4936,
-  4942, 4951, 4957, 4977, 4983, 4992, 4998, 5009,
-  5015, 5024, 5030, 5055, 5061, 5070, 5076, 5087,
-  5093, 5102, 5108, 5128, 5134, 5143, 5149, 5160,
-  5166, 5175, 5181, 5045, 5051, 5060, 5066, 5077,
-  5083, 5092, 5098, 5118, 5124, 5133, 5139, 5150,
-  5156, 5165, 5171, 5196, 5202, 5211, 5217, 5228,
-  5234, 5243, 5249, 5269, 5275, 5284, 5290, 5301,
-  5307, 5316, 5322, 5345, 5351, 5360, 5366, 5377,
-  5383, 5392, 5398, 5418, 5424, 5433, 5439, 5450,
-  5456, 5465, 5471, 5496, 5502, 5511, 5517, 5528,
-  5534, 5543, 5549, 5569, 5575, 5584, 5590, 5601,
-  5607, 5616, 5622, 5417, 5423, 5432, 5438, 5449,
-  5455, 5464, 5470, 5490, 5496, 5505, 5511, 5522,
-  5528, 5537, 5543, 5568, 5574, 5583, 5589, 5600,
-  5606, 5615, 5621, 5641, 5647, 5656, 5662, 5673,
-  5679, 5688, 5694, 5717, 5723, 5732, 5738, 5749,
-  5755, 5764, 5770, 5790, 5796, 5805, 5811, 5822,
-  5828, 5837, 5843, 5868, 5874, 5883, 5889, 5900,
-  5906, 5915, 5921, 5941, 5947, 5956, 5962, 5973,
-  5979, 5988, 5994, 5858, 5864, 5873, 5879, 5890,
-  5896, 5905, 5911, 5931, 5937, 5946, 5952, 5963,
-  5969, 5978, 5984, 6009, 6015, 6024, 6030, 6041,
-  6047, 6056, 6062, 6082, 6088, 6097, 6103, 6114,
-  6120, 6129, 6135, 6158, 6164, 6173, 6179, 6190,
-  6196, 6205, 6211, 6231, 6237, 6246, 6252, 6263,
-  6269, 6278, 6284, 6309, 6315, 6324, 6330, 6341,
-  6347, 6356, 6362, 6382, 6388, 6397, 6403, 6414,
-  6420, 6429, 6435, 3515, 3521, 3530, 3536, 3547,
-  3553, 3562, 3568, 3588, 3594, 3603, 3609, 3620,
-  3626, 3635, 3641, 3666, 3672, 3681, 3687, 3698,
-  3704, 3713, 3719, 3739, 3745, 3754, 3760, 3771,
-  3777, 3786, 3792, 3815, 3821, 3830, 3836, 3847,
-  3853, 3862, 3868, 3888, 3894, 3903, 3909, 3920,
-  3926, 3935, 3941, 3966, 3972, 3981, 3987, 3998,
-  4004, 4013, 4019, 4039, 4045, 4054, 4060, 4071,
-  4077, 4086, 4092, 3956, 3962, 3971, 3977, 3988,
-  3994, 4003, 4009, 4029, 4035, 4044, 4050, 4061,
-  4067, 4076, 4082, 4107, 4113, 4122, 4128, 4139,
-  4145, 4154, 4160, 4180, 4186, 4195, 4201, 4212,
-  4218, 4227, 4233, 4256, 4262, 4271, 4277, 4288,
-  4294, 4303, 4309, 4329, 4335, 4344, 4350, 4361,
-  4367, 4376, 4382, 4407, 4413, 4422, 4428, 4439,
-  4445, 4454, 4460, 4480, 4486, 4495, 4501, 4512,
-  4518, 4527, 4533, 4328, 4334, 4343, 4349, 4360,
-  4366, 4375, 4381, 4401, 4407, 4416, 4422, 4433,
-  4439, 4448, 4454, 4479, 4485, 4494, 4500, 4511,
-  4517, 4526, 4532, 4552, 4558, 4567, 4573, 4584,
-  4590, 4599, 4605, 4628, 4634, 4643, 4649, 4660,
-  4666, 4675, 4681, 4701, 4707, 4716, 4722, 4733,
-  4739, 4748, 4754, 4779, 4785, 4794, 4800, 4811,
-  4817, 4826, 4832, 4852, 4858, 4867, 4873, 4884,
-  4890, 4899, 4905, 4769, 4775, 4784, 4790, 4801,
-  4807, 4816, 4822, 4842, 4848, 4857, 4863, 4874,
-  4880, 4889, 4895, 4920, 4926, 4935, 4941, 4952,
-  4958, 4967, 4973, 4993, 4999, 5008, 5014, 5025,
-  5031, 5040, 5046, 5069, 5075, 5084, 5090, 5101,
-  5107, 5116, 5122, 5142, 5148, 5157, 5163, 5174,
-  5180, 5189, 5195, 5220, 5226, 5235, 5241, 5252,
-  5258, 5267, 5273, 5293, 5299, 5308, 5314, 5325,
-  5331, 5340, 5346, 4604, 4610, 4619, 4625, 4636,
-  4642, 4651, 4657, 4677, 4683, 4692, 4698, 4709,
-  4715, 4724, 4730, 4755, 4761, 4770, 4776, 4787,
-  4793, 4802, 4808, 4828, 4834, 4843, 4849, 4860,
-  4866, 4875, 4881, 4904, 4910, 4919, 4925, 4936,
-  4942, 4951, 4957, 4977, 4983, 4992, 4998, 5009,
-  5015, 5024, 5030, 5055, 5061, 5070, 5076, 5087,
-  5093, 5102, 5108, 5128, 5134, 5143, 5149, 5160,
-  5166, 5175, 5181, 5045, 5051, 5060, 5066, 5077,
-  5083, 5092, 5098, 5118, 5124, 5133, 5139, 5150,
-  5156, 5165, 5171, 5196, 5202, 5211, 5217, 5228,
-  5234, 5243, 5249, 5269, 5275, 5284, 5290, 5301,
-  5307, 5316, 5322, 5345, 5351, 5360, 5366, 5377,
-  5383, 5392, 5398, 5418, 5424, 5433, 5439, 5450,
-  5456, 5465, 5471, 5496, 5502, 5511, 5517, 5528,
-  5534, 5543, 5549, 5569, 5575, 5584, 5590, 5601,
-  5607, 5616, 5622, 5417, 5423, 5432, 5438, 5449,
-  5455, 5464, 5470, 5490, 5496, 5505, 5511, 5522,
-  5528, 5537, 5543, 5568, 5574, 5583, 5589, 5600,
-  5606, 5615, 5621, 5641, 5647, 5656, 5662, 5673,
-  5679, 5688, 5694, 5717, 5723, 5732, 5738, 5749,
-  5755, 5764, 5770, 5790, 5796, 5805, 5811, 5822,
-  5828, 5837, 5843, 5868, 5874, 5883, 5889, 5900,
-  5906, 5915, 5921, 5941, 5947, 5956, 5962, 5973,
-  5979, 5988, 5994, 5858, 5864, 5873, 5879, 5890,
-  5896, 5905, 5911, 5931, 5937, 5946, 5952, 5963,
-  5969, 5978, 5984, 6009, 6015, 6024, 6030, 6041,
-  6047, 6056, 6062, 6082, 6088, 6097, 6103, 6114,
-  6120, 6129, 6135, 6158, 6164, 6173, 6179, 6190,
-  6196, 6205, 6211, 6231, 6237, 6246, 6252, 6263,
-  6269, 6278, 6284, 6309, 6315, 6324, 6330, 6341,
-  6347, 6356, 6362, 6382, 6388, 6397, 6403, 6414,
-  6420, 6429, 6435, 5303, 5309, 5318, 5324, 5335,
-  5341, 5350, 5356, 5376, 5382, 5391, 5397, 5408,
-  5414, 5423, 5429, 5454, 5460, 5469, 5475, 5486,
-  5492, 5501, 5507, 5527, 5533, 5542, 5548, 5559,
-  5565, 5574, 5580, 5603, 5609, 5618, 5624, 5635,
-  5641, 5650, 5656, 5676, 5682, 5691, 5697, 5708,
-  5714, 5723, 5729, 5754, 5760, 5769, 5775, 5786,
-  5792, 5801, 5807, 5827, 5833, 5842, 5848, 5859,
-  5865, 5874, 5880, 5744, 5750, 5759, 5765, 5776,
-  5782, 5791, 5797, 5817, 5823, 5832, 5838, 5849,
-  5855, 5864, 5870, 5895, 5901, 5910, 5916, 5927,
-  5933, 5942, 5948, 5968, 5974, 5983, 5989, 6000,
-  6006, 6015, 6021, 6044, 6050, 6059, 6065, 6076,
-  6082, 6091, 6097, 6117, 6123, 6132, 6138, 6149,
-  6155, 6164, 6170, 6195, 6201, 6210, 6216, 6227,
-  6233, 6242, 6248, 6268, 6274, 6283, 6289, 6300,
-  6306, 6315, 6321, 6116, 6122, 6131, 6137, 6148,
-  6154, 6163, 6169, 6189, 6195, 6204, 6210, 6221,
-  6227, 6236, 6242, 6267, 6273, 6282, 6288, 6299,
-  6305, 6314, 6320, 6340, 6346, 6355, 6361, 6372,
-  6378, 6387, 6393, 6416, 6422, 6431, 6437, 6448,
-  6454, 6463, 6469, 6489, 6495, 6504, 6510, 6521,
-  6527, 6536, 6542, 6567, 6573, 6582, 6588, 6599,
-  6605, 6614, 6620, 6640, 6646, 6655, 6661, 6672,
-  6678, 6687, 6693, 6557, 6563, 6572, 6578, 6589,
-  6595, 6604, 6610, 6630, 6636, 6645, 6651, 6662,
-  6668, 6677, 6683, 6708, 6714, 6723, 6729, 6740,
-  6746, 6755, 6761, 6781, 6787, 6796, 6802, 6813,
-  6819, 6828, 6834, 6857, 6863, 6872, 6878, 6889,
-  6895, 6904, 6910, 6930, 6936, 6945, 6951, 6962,
-  6968, 6977, 6983, 7008, 7014, 7023, 7029, 7040,
-  7046, 7055, 7061, 7081, 7087, 7096, 7102, 7113,
-  7119, 7128, 7134, 6392, 6398, 6407, 6413, 6424,
-  6430, 6439, 6445, 6465, 6471, 6480, 6486, 6497,
-  6503, 6512, 6518, 6543, 6549, 6558, 6564, 6575,
-  6581, 6590, 6596, 6616, 6622, 6631, 6637, 6648,
-  6654, 6663, 6669, 6692, 6698, 6707, 6713, 6724,
-  6730, 6739, 6745, 6765, 6771, 6780, 6786, 6797,
-  6803, 6812, 6818, 6843, 6849, 6858, 6864, 6875,
-  6881, 6890, 6896, 6916, 6922, 6931, 6937, 6948,
-  6954, 6963, 6969, 6833, 6839, 6848, 6854, 6865,
-  6871, 6880, 6886, 6906, 6912, 6921, 6927, 6938,
-  6944, 6953, 6959, 6984, 6990, 6999, 7005, 7016,
-  7022, 7031, 7037, 7057, 7063, 7072, 7078, 7089,
-  7095, 7104, 7110, 7133, 7139, 7148, 7154, 7165,
-  7171, 7180, 7186, 7206, 7212, 7221, 7227, 7238,
-  7244, 7253, 7259, 7284, 7290, 7299, 7305, 7316,
-  7322, 7331, 7337, 7357, 7363, 7372, 7378, 7389,
-  7395, 7404, 7410, 7205, 7211, 7220, 7226, 7237,
-  7243, 7252, 7258, 7278, 7284, 7293, 7299, 7310,
-  7316, 7325, 7331, 7356, 7362, 7371, 7377, 7388,
-  7394, 7403, 7409, 7429, 7435, 7444, 7450, 7461,
-  7467, 7476, 7482, 7505, 7511, 7520, 7526, 7537,
-  7543, 7552, 7558, 7578, 7584, 7593, 7599, 7610,
-  7616, 7625, 7631, 7656, 7662, 7671, 7677, 7688,
-  7694, 7703, 7709, 7729, 7735, 7744, 7750, 7761
-};
+void PickBestIntra16(uint8_t Yin[16*16], uint8_t Yout[16*16], uint8_t YPred[4][16*16],
+		VP8ModeScore* rd, VP8SegmentInfo* const dqm) {
 
-static int VP8LevelCost(const uint16_t* table, int level) {
-#pragma HLS INLINE off
-  return VP8LevelFixedCosts[level] + table[(level > MAX_VARIABLE_LEVEL) ? MAX_VARIABLE_LEVEL : level];
-}
-
-const uint8_t VP8EncBands[16 + 1] = {
-  0, 1, 2, 3, 6, 4, 5, 6, 6, 6, 6, 6, 6, 6, 6, 7,
-  0  // sentinel
-};
-
-int GetResidualCost_C(int ctx0, int first, int last,
-		const int16_t const coeffs[16], ProbaArray prob[NUM_BANDS], CostArrayMap costs) {
-#pragma HLS ARRAY_PARTITION variable=coeffs complete dim=1
-#pragma HLS ARRAY_PARTITION variable=costs complete dim=1
-  //should be prob[VP8EncBands[n]], but it's equivalent for n=0 or 1
-  const int p0 = prob[first][ctx0][0];
-
-  if (last < 0) {
-    return VP8BitCost(0, p0);
-  }
-
-  int n, cost = 0, cost_t[18];
-#pragma HLS ARRAY_PARTITION variable=cost_t complete dim=1
-#pragma HLS ARRAY_PARTITION variable=VP8EncBands complete dim=1
-  for(n = 0; n < 18; n++){
-#pragma HLS unroll
-	  cost_t[n] = 0;
-  }
-
-  // bit_cost(1, p0) is already incorporated in t[] tables, but only if ctx != 0
-  // (as required by the syntax). For ctx0 == 0, we need to add it here or it'll
-  // be missing during the loop.
-  cost_t[16] = (ctx0 == 0) ? VP8BitCost(1, p0) : 0;
-
-  int v[16], ctx[16];
-
-  v[0] = abs(coeffs[0]);
-  ctx[0] = ctx0;
-  cost_t[0] = VP8LevelCost(costs[0][ctx[0]], v[0]);
-
-  for(n = 1; n < 16; n++){
-#pragma HLS unroll
-	v[n] = abs(coeffs[n]);
-	ctx[n] = (v[n-1] >= 2) ? 2 : v[n-1];
-  }
-
-  for(n = 1; n < 16; n++){
-#pragma HLS unroll
-	cost_t[n] = VP8LevelCost(costs[n][ctx[n]], v[n]);
-  }
-
-  if (last < 15) {
-	const int v1 = abs(coeffs[last]);
-    const int ctx1 = (v1 == 1) ? 1 : 2;
-	const int b = VP8EncBands[last + 1];
-	const int last_p0 = prob[b][ctx1][0];
-    cost_t[17] = VP8BitCost(0, last_p0);
-  }
-
-  for(n = 0; n < 18; n++){
-#pragma HLS unroll
-	  cost += cost_t[n];
-  }
-
-  return cost;
-}
-
-int VP8GetCostLuma16(const int tnz, const int lnz, int top_nz[9], int left_nz[9],
-		ProbaArray coeffs_dc[NUM_BANDS],CostArrayMap remapped_costs_dc,
-		ProbaArray coeffs_ac[NUM_BANDS],CostArrayMap remapped_costs_ac,
-		const VP8ModeScore* const rd) {
 //#pragma HLS pipeline
-#pragma HLS ARRAY_PARTITION variable=remapped_costs_dc complete dim=1
-#pragma HLS ARRAY_PARTITION variable=remapped_costs_ac complete dim=1
-#pragma HLS ARRAY_PARTITION variable=left_nz complete dim=1
-#pragma HLS ARRAY_PARTITION variable=top_nz complete dim=1
-#pragma HLS ARRAY_PARTITION variable=rd->y_ac_levels complete dim=0
-#pragma HLS ARRAY_PARTITION variable=rd->y_dc_levels complete dim=1
-  int last;
-  int ctx;
-  int x, y;
-  int R = 0;
-
-  VP8IteratorNzToBytes(tnz, lnz, top_nz, left_nz);   // re-import the non-zero context
-
-  // DC
-  last = SetResidualCoeffs_C(rd->y_dc_levels);
-  ctx = top_nz[8] + left_nz[8];
-  R += GetResidualCost_C(ctx, 0, last, rd->y_dc_levels, coeffs_dc, remapped_costs_dc);
-
-  // AC
-  int ctx_t[16],last_t[16],i;
-  int16_t y_ac_levels_t[16];
-
-  for (y = 0; y < 4; ++y) {
-    for (x = 0; x < 4; ++x) {
-      for(i = 0; i < 16; ++i) {
-#pragma HLS unroll
-    	  y_ac_levels_t[i] = rd->y_ac_levels[x + y * 4][i];
-      }
-      ctx_t[x + y * 4] = top_nz[x] + left_nz[y];
-      last_t[x + y * 4] = SetResidualCoeffs_C(y_ac_levels_t);
-      top_nz[x] = left_nz[y] = (last_t[x + y * 4] >= 0);
-    }
-  }
-  for (y = 0; y < 4; ++y) {
-    for (x = 0; x < 4; ++x) {
-      R += GetResidualCost_C(ctx_t[x + y * 4], 1, last_t[x + y * 4], rd->y_ac_levels[x + y * 4], coeffs_ac, remapped_costs_ac);
-    }
-  }
-  return R;
-}
-
-static score_t IsFlat(const int16_t (*levels)[16], int num_blocks, score_t thresh) {
-  score_t score = 0;
-  int i,j;
-  for (j = 0; j < num_blocks; ++j) { // TODO(skal): refine positional scoring?
-#pragma HLS unroll
-    for (i = 1; i < 16; ++i) {     // omit DC, we're only interested in AC
-#pragma HLS unroll
-	  score += (levels[j][i] != 0);
-	}
-  }
-  if (score > thresh)
-	return 0;
-  else
-	return 1;
-}
-
-void rd_cal(
-		VP8ModeScore * rd_cur, uint8_t Yin[16*16], uint8_t Yout[16*16],
-		const int lambda, const int tlambda, ap_uint<2> mode, const int tnz,
-		const int lnz, int top_nz[9], int left_nz[9],
-		ProbaArray coeffs_dc[NUM_BANDS], CostArrayMap remapped_costs_dc,
-		ProbaArray coeffs_ac[NUM_BANDS], CostArrayMap remapped_costs_ac) {
-#pragma HLS pipeline
-#pragma HLS ARRAY_PARTITION variable=remapped_costs_dc complete dim=1
-#pragma HLS ARRAY_PARTITION variable=remapped_costs_ac complete dim=1
-#pragma HLS ARRAY_PARTITION variable=left_nz complete dim=1
-#pragma HLS ARRAY_PARTITION variable=top_nz complete dim=1
 #pragma HLS ARRAY_PARTITION variable=Yout complete dim=1
 #pragma HLS ARRAY_PARTITION variable=Yin complete dim=1
-#pragma HLS ARRAY_PARTITION variable=rd_cur->y_ac_levels complete dim=0
-#pragma HLS ARRAY_PARTITION variable=rd_cur->y_dc_levels complete dim=1
+#pragma HLS ARRAY_PARTITION variable=YPred complete dim=1
+#pragma HLS ARRAY_PARTITION variable=rd->y_ac_levels complete dim=0
+#pragma HLS ARRAY_PARTITION variable=rd->y_dc_levels complete dim=1
+#pragma HLS ARRAY_PARTITION variable=dqm->y1_.sharpen_ complete dim=1
+#pragma HLS ARRAY_PARTITION variable=dqm->y1_.zthresh_ complete dim=1
+#pragma HLS ARRAY_PARTITION variable=dqm->y1_.bias_ complete dim=1
+#pragma HLS ARRAY_PARTITION variable=dqm->y1_.iq_ complete dim=1
+#pragma HLS ARRAY_PARTITION variable=dqm->y1_.q_ complete dim=1
+#pragma HLS ARRAY_PARTITION variable=dqm->y2_.sharpen_ complete dim=1
+#pragma HLS ARRAY_PARTITION variable=dqm->y2_.zthresh_ complete dim=1
+#pragma HLS ARRAY_PARTITION variable=dqm->y2_.bias_ complete dim=1
+#pragma HLS ARRAY_PARTITION variable=dqm->y2_.iq_ complete dim=1
+#pragma HLS ARRAY_PARTITION variable=dqm->y2_.q_ complete dim=1
 
-		const int kNumBlocks = 16;
-	    rd_cur->D = SSE16x16_C(Yin, Yout);
-	    rd_cur->SD = MULT_8B(tlambda, Disto16x16_C(Yin, Yout, kWeightY));
-	    rd_cur->H = VP8FixedCostsI16[mode];
-//	    rd_cur->R = VP8GetCostLuma16(tnz, lnz, top_nz, left_nz, coeffs_dc, remapped_costs_dc, coeffs_ac, remapped_costs_ac, rd_cur);
-//	    rd_cur->R += FLATNESS_PENALTY * kNumBlocks * (mode != 0) * IsFlat(rd_cur->y_ac_levels, kNumBlocks, FLATNESS_LIMIT_I16);
+  const int kNumBlocks = 16;
+  //VP8SegmentInfo* const dqm = &it->enc_->dqm_[it->mb_->segment_];
+  const int lambda = dqm->lambda_i16_;
+  const int tlambda = dqm->tlambda_;
+  const uint8_t* const src = Yin;
+  VP8ModeScore rd_tmp;
+  VP8ModeScore* rd_cur = &rd_tmp;
+  VP8ModeScore* rd_best = rd;
+  int mode;
+  uint8_t Yout_tmp[16*16];
+
+  //rd->mode_i16 = -1;
+  for (mode = 0; mode < NUM_PRED_MODES; ++mode) {
+    uint8_t* const tmp_dst = Yout_tmp;  // scratch buffer
+    rd_cur->mode_i16 = mode;
+
+    // Reconstruct
+    rd_cur->nz = ReconstructIntra16(YPred[mode], src, tmp_dst, rd_cur->y_ac_levels,
+    		rd_cur->y_dc_levels, dqm->y1_, dqm->y2_);
+
+    // Measure RD-score
+    rd_cur->D = SSE16x16_C(src, tmp_dst);
+    rd_cur->SD = MULT_8B(tlambda, Disto16x16_C(src, tmp_dst, kWeightY));
+    rd_cur->H = VP8FixedCostsI16[mode];
+
+	int64_t test_R = 0;
+	int y, x;
+	for (y = 1; y < 16; ++y) {
+#pragma HLS unroll
+	  for (x = 1; x < 16; ++x) {
+#pragma HLS unroll
+	    test_R += rd_cur->y_ac_levels[y][x] * rd_cur->y_ac_levels[y][x];
+	  }
+	}
+	for (y = 0; y < 16; ++y) {
+#pragma HLS unroll
+	  test_R += rd_cur->y_dc_levels[y] * rd_cur->y_dc_levels[y];
+	}
+	rd_cur->R = test_R << 10;
+
+    // Since we always examine Intra16 first, we can overwrite *rd directly.
+    SetRDScore(lambda, rd_cur);
+
+    if (rd_cur->score < rd_best->score) {
+      rd_best->mode_i16	= rd_cur->mode_i16;
+      CopyScore(rd_best, rd_cur);
+	  for (y = 0; y < 16; ++y) {
+#pragma HLS unroll
+		for (x = 0; x < 16; ++x) {
+#pragma HLS unroll
+		  rd_best->y_ac_levels[y][x] = rd_cur->y_ac_levels[y][x];
+		}
+	  }
+	  for (y = 0; y < 16; ++y) {
+#pragma HLS unroll
+		rd_best->y_dc_levels[y] = rd_cur->y_dc_levels[y];
+	  }
+	  for (y = 0; y < 256; ++y) {
+#pragma HLS unroll
+		Yout[y] = tmp_dst[y];
+	  }
+    }
+  }
+
+  SetRDScore(dqm->lambda_mode_, rd);   // finalize score for mode decision.
+
+  // we have a blocky macroblock (only DCs are non-zero) with fairly high
+  // distortion, record max delta so we can later adjust the minimal filtering
+  // strength needed to smooth these blocks out.
+  if ((rd->nz & 0x100ffff) == 0x1000000 && rd->D > dqm->min_disto_) {
+    StoreMaxDelta(dqm, rd->y_dc_levels);
+  }
+}
+
+#define MAX_COST ((score_t)0x7fffffffffffffLL)
+
+static void InitScore(VP8ModeScore* const rd) {
+  rd->D  = 0;
+  rd->SD = 0;
+  rd->R  = 0;
+  rd->H  = 0;
+  rd->nz = 0;
+  rd->score = MAX_COST;
+}
+
+void picki4b(int i4, uint8_t y_left[16], uint8_t y_top_left, uint8_t y_top[20],
+		uint8_t left[4], uint8_t* top_left, uint8_t top[4], uint8_t top_right[4]) {
+
+	int i;
+
+    switch(i4){
+    case 0 :
+    	*top_left = y_top_left;
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			left[i] = y_left[i];
+		}
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			top[i] = y_top[i];
+		}
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			top_right[i] = y_top[4+i];
+		}
+		break;
+    case 1 :
+    	*top_left = y_top[3];
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			left[i] = y_left[i];
+		}
+		for (i = 0; i <4; ++i) {
+#pragma HLS unroll
+			top[i] = y_top[4+i];
+		}
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			top_right[i] = y_top[8+i];
+		}
+		break;
+    case 2 :
+    	*top_left = y_top[7];
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			left[i] = y_left[i];
+		}
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			top[i] = y_top[8+i];
+		}
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			top_right[i] = y_top[12+i];
+		}
+		break;
+    case 3 :
+    	*top_left = y_top[11];
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			left[i] = y_left[i];
+		}
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			top[i] = y_top[12+i];
+		}
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			top_right[i] = y_top[16+i];
+		}
+		break;
+    case 4 :
+    	*top_left = y_top_left;
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			left[i] = y_left[4+i];
+		}
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			top[i] = y_top[i];
+		}
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			top_right[i] = y_top[4+i];
+		}
+		break;
+    case 5 :
+    	*top_left = y_top[3];
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			left[i] = y_left[4+i];
+		}
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			top[i] = y_top[4+i];
+		}
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			top_right[i] = y_top[8+i];
+		}
+		break;
+    case 6 :
+    	*top_left = y_top[7];
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			left[i] = y_left[4+i];
+		}
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			top[i] = y_top[8+i];
+		}
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			top_right[i] = y_top[12+i];
+		}
+		break;
+    case 7 :
+    	*top_left = y_top[11];
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			left[i] = y_left[4+i];
+		}
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			top[i] = y_top[12+i];
+		}
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			top_right[i] = y_top[16+i];
+		}
+		break;
+    case 8 :
+    	*top_left = y_top_left;
+    	for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			left[i] = y_left[8+i];
+		}
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			top[i] = y_top[i];
+		}
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			top_right[i] = y_top[4+i];
+		}
+		break;
+    case 9 :
+    	*top_left = y_top[3];
+    	for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			left[i] = y_left[8+i];
+		}
+    	for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			top[i] = y_top[4+i];
+		}
+    	for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			top_right[i] = y_top[8+i];
+		}
+		break;
+    case 10 :
+    	*top_left = y_top[7];
+    	for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			left[i] = y_left[8+i];
+		}
+    	for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			top[i] = y_top[8+i];
+		}
+    	for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			top_right[i] = y_top[12+i];
+		}
+		break;
+    case 11 :
+    	*top_left = y_top[11];
+    	for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			left[i] = y_left[8+i];
+		}
+    	for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			top[i] = y_top[12+i];
+		}
+    	for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			top_right[i] = y_top[16+i];
+		}
+		break;
+    case 12 :
+    	*top_left = y_top_left;
+    	for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			left[i] = y_left[12+i];
+		}
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			top[i] = y_top[i];
+		}
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			top_right[i] = y_top[4+i];
+		}
+		break;
+    case 13 :
+    	*top_left = y_top[3];
+    	for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			left[i] = y_left[12+i];
+		}
+    	for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			top[i] = y_top[4+i];
+		}
+    	for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			top_right[i] = y_top[8+i];
+		}
+		break;
+    case 14 :
+    	*top_left = y_top[7];
+    	for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			left[i] = y_left[12+i];
+		}
+    	for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			top[i] = y_top[8+i];
+		}
+    	for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			top_right[i] = y_top[12+i];
+		}
+		break;
+    case 15 :
+    	*top_left = y_top[11];
+    	for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			left[i] = y_left[12+i];
+		}
+    	for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			top[i] = y_top[12+i];
+		}
+    	for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			top_right[i] = y_top[16+i];
+		}
+		break;
+    }
+}
+
+const uint16_t VP8FixedCostsI4[NUM_BMODES] =
+   {   40, 1151, 1723, 1874, 2103, 2019, 1628, 1777, 2226, 2137 };
+
+static int SSE4x4_C(const uint8_t* a, const uint8_t* b) {
+  return GetSSE(a, b, 4, 4);
+}
+
+static void AddScore(VP8ModeScore* const dst, const VP8ModeScore* const src) {
+  dst->D  += src->D;
+  dst->SD += src->SD;
+  dst->R  += src->R;
+  dst->H  += src->H;
+  dst->nz |= src->nz;     // here, new nz bits are accumulated.
+  dst->score += src->score;
+}
+
+int VP8IteratorRotateI4(uint8_t y_left[16], uint8_t* y_top_left, uint8_t y_top[20], int* i4_,
+                        uint8_t yuv_out[16][16]) {
+  const uint8_t* const blk = yuv_out[*i4_];
+  int i;
+
+  switch(*i4_){
+  case 0 :
+	  *y_top_left = y_left[3];
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			y_left[i] = blk[3+4*i];
+		}
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			y_top[i] = blk[12+i];
+		}
+		break;
+  case 1 :
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			y_left[i] = blk[3+4*i];
+		}
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			y_top[4+i] = blk[12+i];
+		}
+		break;
+  case 2 :
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			y_left[i] = blk[3+4*i];
+		}
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			y_top[8+i] = blk[12+i];
+		}
+		break;
+  case 3 :
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			y_top[12+i] = blk[12+i];
+		}
+		break;
+  case 4 :
+	  *y_top_left = y_left[7];
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			y_left[4+i] = blk[3+4*i];
+		}
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			y_top[i] = blk[12+i];
+		}
+		break;
+  case 5 :
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			y_left[4+i] = blk[3+4*i];
+		}
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			y_top[4+i] = blk[12+i];
+		}
+		break;
+  case 6 :
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			y_left[4+i] = blk[3+4*i];
+		}
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			y_top[8+i] = blk[12+i];
+		}
+		break;
+  case 7 :
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			y_top[12+i] = blk[12+i];
+		}
+		break;
+  case 8 :
+	  *y_top_left = y_left[11];
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			y_left[8+i] = blk[3+4*i];
+		}
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			y_top[i] = blk[12+i];
+		}
+		break;
+  case 9 :
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			y_left[8+i] = blk[3+4*i];
+		}
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			y_top[4+i] = blk[12+i];
+		}
+		break;
+  case 10 :
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			y_left[8+i] = blk[3+4*i];
+		}
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			y_top[8+i] = blk[12+i];
+		}
+		break;
+  case 11 :
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			y_top[12+i] = blk[12+i];
+		}
+		break;
+  case 12 :
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			y_left[12+i] = blk[3+4*i];
+		}
+		break;
+  case 13 :
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			y_left[12+i] = blk[3+4*i];
+		}
+		break;
+  case 14 :
+		for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+			y_left[12+i] = blk[3+4*i];
+		}
+		break;
+  case 15 :
+	  	return 0;
+  }
+  // move pointers to next sub-block
+  ++(*i4_);
+  return 1;
+}
+
+
+int PickBestIntra4(VP8SegmentInfo* const dqm, uint8_t Yin[16*16], uint8_t Yout[16*16],
+		VP8ModeScore* const rd, uint8_t y_left[16], uint8_t y_top_left, uint8_t y_top[20], ap_uint<1> mbtype) {
+#pragma HLS ARRAY_PARTITION variable=Yout complete dim=1
+#pragma HLS ARRAY_PARTITION variable=Yin complete dim=1
+#pragma HLS ARRAY_PARTITION variable=rd->y_ac_levels complete dim=0
+#pragma HLS ARRAY_PARTITION variable=dqm->y1_.sharpen_ complete dim=1
+#pragma HLS ARRAY_PARTITION variable=dqm->y1_.zthresh_ complete dim=1
+#pragma HLS ARRAY_PARTITION variable=dqm->y1_.bias_ complete dim=1
+#pragma HLS ARRAY_PARTITION variable=dqm->y1_.iq_ complete dim=1
+#pragma HLS ARRAY_PARTITION variable=dqm->y1_.q_ complete dim=1
+#pragma HLS ARRAY_PARTITION variable=y_left complete dim=1
+#pragma HLS ARRAY_PARTITION variable=y_top complete dim=1
+  const int lambda = dqm->lambda_i4_;
+  const int tlambda = dqm->tlambda_;
+  const uint8_t* const src0 = Yin;
+  uint8_t best_blocks[16][16];
+  VP8ModeScore rd_best;
+  uint8_t i_left[16], i_top_left, i_top[20];
+  int i, j, n;
+  const uint16_t VP8Scan[16] = {  // Luma
+    0 +  0 * 16,  4 +  0 * 16, 8 +  0 * 16, 12 +  0 * 16,
+    0 +  4 * 16,  4 +  4 * 16, 8 +  4 * 16, 12 +  4 * 16,
+    0 +  8 * 16,  4 +  8 * 16, 8 +  8 * 16, 12 +  8 * 16,
+    0 + 12 * 16,  4 + 12 * 16, 8 + 12 * 16, 12 + 12 * 16,
+  };
+
+#pragma HLS ARRAY_PARTITION variable=best_blocks complete dim=0
+#pragma HLS ARRAY_PARTITION variable=VP8Scan complete dim=1
+#pragma HLS ARRAY_PARTITION variable=i_left complete dim=1
+#pragma HLS ARRAY_PARTITION variable=i_top complete dim=1
+#pragma HLS ARRAY_PARTITION variable=rd_best.y_ac_levels complete dim=0
+
+  i_top_left = y_top_left;
+  for (i = 0; i < 16; ++i) {
+#pragma HLS unroll
+	  i_left[i] = y_left[i];
+  }
+  for (i = 0; i < 20; ++i) {
+#pragma HLS unroll
+	  i_top[i] = y_top[i];
+  }
+
+  InitScore(&rd_best);
+  rd_best.H = 211;  // '211' is the value of VP8BitCost(0, 145)
+  SetRDScore(dqm->lambda_mode_, &rd_best);
+
+  int i4_ = 0;
+
+  do {
+    const int kNumBlocks = 1;
+    VP8ModeScore rd_i4;
+    int mode;
+    int best_mode = -1;
+    uint8_t src[16][16];
+    const uint16_t* const mode_costs = VP8FixedCostsI4;
+    uint8_t* best_block = best_blocks[i4_];
+    uint8_t tmp_pred[10][16];    // scratch buffer.
+    uint8_t left[4], top_left, top[4], top_right[4];
+
+#pragma HLS ARRAY_PARTITION variable=src complete dim=0
+#pragma HLS ARRAY_PARTITION variable=VP8FixedCostsI4 complete dim=1
+#pragma HLS ARRAY_PARTITION variable=tmp_pred complete dim=0
+#pragma HLS ARRAY_PARTITION variable=left complete dim=1
+#pragma HLS ARRAY_PARTITION variable=top complete dim=1
+#pragma HLS ARRAY_PARTITION variable=top_right complete dim=1
+
+    for(n = 0; n < 16; n++){
+#pragma HLS unroll
+  	  for(j = 0; j < 4; j++){
+#pragma HLS unroll
+  		  for(i = 0; i < 4; i++){
+#pragma HLS unroll
+  			  src[n][j * 4 + i] = src0[VP8Scan[n] + j * 16 + i];
+  		  }
+  	  }
+    }
+
+    InitScore(&rd_i4);
+
+    picki4b(i4_, i_left, i_top_left, i_top, left, &top_left, top, top_right);
+
+    Intra4Preds_C(tmp_pred, left, top_left, top, top_right);
+
+    for (mode = 0; mode < NUM_BMODES; ++mode) {
+      VP8ModeScore rd_tmp;
+      int16_t tmp_levels[16];
+      uint8_t tmp_dst[10][16];
+#pragma HLS ARRAY_PARTITION variable=tmp_dst complete dim=0
+#pragma HLS ARRAY_PARTITION variable=tmp_levels complete dim=1
+      // Reconstruct
+      rd_tmp.nz =
+          ReconstructIntra4(tmp_levels, tmp_pred[mode], src[i4_], tmp_dst[mode], dqm->y1_) << i4_;
+
+      // Compute RD-score
+      rd_tmp.D = SSE4x4_C(src[i4_], tmp_dst[mode]);
+      rd_tmp.SD = MULT_8B(tlambda, Disto4x4_C(src[i4_], tmp_dst[mode], kWeightY));
+      rd_tmp.H = mode_costs[mode];
+
+	  int64_t test_R = 0;
+	  int y;
+	  for (y = 0; y < 16; ++y) {
+#pragma HLS unroll
+		test_R += tmp_levels[y] * tmp_levels[y];
+	  }
+	  rd_tmp.R = test_R << 10;
+
+      SetRDScore(lambda, &rd_tmp);
+
+      if (rd_tmp.score < rd_i4.score) {
+        CopyScore(&rd_i4, &rd_tmp);
+        best_mode = mode;
+  	    for (y = 0; y < 16; ++y) {
+#pragma HLS unroll
+  		  rd_best.y_ac_levels[i4_][y] = tmp_levels[y];
+  	    }
+  	    for (y = 0; y < 16; ++y) {
+#pragma HLS unroll
+  		  best_block[y] = tmp_dst[mode][y];
+  	    }
+      }
+    }
+    SetRDScore(dqm->lambda_mode_, &rd_i4);
+    AddScore(&rd_best, &rd_i4);
+    if (rd_best.score >= rd->score) {
+      return 0;
+    }
+    rd->modes_i4[i4_] = best_mode;
+  } while (VP8IteratorRotateI4(i_left, &i_top_left, i_top, &i4_, best_blocks));
+
+  // finalize state
+  CopyScore(rd, &rd_best);
+
+  for(n = 0; n < 16; n++){
+#pragma HLS unroll
+	  for(j = 0; j < 4; j++){
+#pragma HLS unroll
+		  for(i = 0; i < 4; i++){
+#pragma HLS unroll
+			  Yout[VP8Scan[n] + j * 16 + i] = best_blocks[n][j * 4 + i];
+		  }
+	  }
+  }
+
+    for (j = 0; j < 16; ++j) {
+#pragma HLS unroll
+        for (i = 0; i < 16; ++i) {
+#pragma HLS unroll
+        	rd->y_ac_levels[j][i] = rd_best.y_ac_levels[j][i];
+        }
+    }
+    mbtype = 1;
+  return 1;   // select intra4x4 over intra16x16
+}
+
+static int SSE16x8_C(const uint8_t* a, const uint8_t* b) {
+  return GetSSE(a, b, 16, 8);
+}
+
+const uint16_t VP8FixedCostsUV[4] = { 302, 984, 439, 642 };
+
+void PickBestUV(VP8SegmentInfo* const dqm, uint8_t Yin[8*16], uint8_t UVPred[8][8*8],
+		uint8_t Yout[8*16], VP8ModeScore* const rd) {
+  const int kNumBlocks = 8;
+  const int lambda = dqm->lambda_uv_;
+  const uint8_t* const src = Yin;
+  uint8_t tmp_dst[8*16];  // scratch buffer
+  uint8_t* dst = Yout;
+  VP8ModeScore rd_best;
+  uint8_t tmp_p[4][8*16];
+  int mode;
+  int i, j;
+  for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+	for (j = 0; j < 64; ++j) {
+		tmp_p[i][j] = UVPred[i][j];
+	}
+	for (j = 0; j < 64; ++j) {
+		tmp_p[i][j+64] = UVPred[i+4][j];
+	}
+  }
+  rd->mode_uv = -1;
+  InitScore(&rd_best);
+  for (mode = 0; mode < NUM_PRED_MODES; ++mode) {
+    VP8ModeScore rd_uv;
+
+    // Reconstruct
+    rd_uv.nz = ReconstructUV(rd_uv.uv_levels, tmp_p[mode], src, tmp_dst, dqm->uv_);
+
+    // Compute RD-score
+    rd_uv.D  = SSE16x8_C(src, tmp_dst);
+    rd_uv.SD = 0;    // not calling TDisto here: it tends to flatten areas.
+    rd_uv.H  = VP8FixedCostsUV[mode];
+
+	int64_t test_R = 0;
+	int x, y;
+	for (y = 0; y < 8; ++y) {
+	  for (x = 0; x < 16; ++x) {
+	    test_R += rd_uv.uv_levels[y][x] * rd_uv.uv_levels[y][x];
+	  }
+	}
+	rd_uv.R = test_R << 10;
+
+    SetRDScore(lambda, &rd_uv);
+
+    if (rd_uv.score < rd_best.score) {
+      CopyScore(&rd_best, &rd_uv);
+      rd->mode_uv = mode;
+      for (j = 0; j < 8; ++j) {
+#pragma HLS unroll
+          for (i = 0; i < 16; ++i) {
+#pragma HLS unroll
+        	  rd->uv_levels[j][i] = rd_uv.uv_levels[j][i];
+          }
+      }
+      if (it->top_derr_ != NULL) {
+        memcpy(rd->derr, rd_uv.derr, sizeof(rd_uv.derr));
+      }
+      SwapPtr(&dst, &tmp_dst);
+    }
+  }
+  VP8SetIntraUVMode(it, rd->mode_uv);
+  AddScore(rd, &rd_best);
+  if (dst != dst0) {   // copy 16x8 block if needed
+    VP8Copy16x8(dst, dst0);
+  }
+  if (it->top_derr_ != NULL) {  // store diffusion errors for next block
+    StoreDiffusionErrors(it, rd);
+  }
 }
