@@ -976,6 +976,31 @@ static int ExtractMetadataFromJPEG(j_decompress_ptr dinfo,
   return 1;
 }
 
+#define WEBP_TSAN_IGNORE_FUNCTION
+
+typedef enum {
+  kSSE2,
+  kSSE3,
+  kSlowSSSE3,  // special feature for slow SSSE3 architectures
+  kSSE4_1,
+  kAVX,
+  kAVX2,
+  kNEON,
+  kMIPS32,
+  kMIPSdspR2,
+  kMSA
+} CPUFeature;
+
+typedef int (*VP8CPUInfo)(CPUFeature feature);
+
+#define WEBP_DSP_INIT(func) do {                                    \
+  static volatile VP8CPUInfo func ## _last_cpuinfo_used =           \
+      (VP8CPUInfo)&func ## _last_cpuinfo_used;                      \
+  if (func ## _last_cpuinfo_used == VP8GetCPUInfo) break;           \
+  func();                                                           \
+  func ## _last_cpuinfo_used = VP8GetCPUInfo;                       \
+} while (0)
+
 #define WEBP_DSP_INIT_FUNC(name)                             \
   static WEBP_TSAN_IGNORE_FUNCTION void name ## _body(void); \
   WEBP_TSAN_IGNORE_FUNCTION void name(void) {                \
