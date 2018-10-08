@@ -693,6 +693,9 @@ static void CorrectDCValues(DError top_derr[1024], DError left_derr, int x,
   }
 }
 
+#undef C1
+#undef C2
+
 int ReconstructUV(int16_t uv_levels[8][16],const uint8_t uv_p[8*16],
 		const uint8_t uv_src[8*16], uint8_t uv_out[8*16], VP8Matrix uv,
 		DError top_derr[1024], DError left_derr, int x, int8_t derr[2][3]) {
@@ -1812,3 +1815,272 @@ void VP8Decimate(uint8_t Yin[16*16], uint8_t Yout16[16*16], uint8_t Yout4[16*16]
   *is_skipped = (rd->nz == 0);
 }
 
+typedef double LFStats_My[MAX_LF_LEVELS];
+
+#define VP8_SSIM_KERNEL 3
+
+// hat-shaped filter. Sum of coefficients is equal to 16.
+static const uint32_t kWeight[2 * VP8_SSIM_KERNEL + 1] = {
+  1, 2, 3, 4, 3, 2, 1
+};
+
+typedef struct {
+  uint32_t w;              // sum(w_i) : sum of weights
+  uint32_t xm, ym;         // sum(w_i * x_i), sum(w_i * y_i)
+  uint32_t xxm, xym, yym;  // sum(w_i * x_i * x_i), etc.
+} VP8DistoStats;
+
+ double SSIMCalculation(
+    const VP8DistoStats* const stats, uint32_t N  /*num samples*/) {
+  const uint32_t w2 =  N * N;
+  const uint32_t C1 = 20 * w2;
+  const uint32_t C2 = 60 * w2;
+  const uint32_t C3 = 8 * 8 * w2;   // 'dark' limit ~= 6
+  const uint64_t xmxm = (uint64_t)stats->xm * stats->xm;
+  const uint64_t ymym = (uint64_t)stats->ym * stats->ym;
+  if (xmxm + ymym >= C3) {
+    const int64_t xmym = (int64_t)stats->xm * stats->ym;
+    const int64_t sxy = (int64_t)stats->xym * N - xmym;    // can be negative
+    const uint64_t sxx = (uint64_t)stats->xxm * N - xmxm;
+    const uint64_t syy = (uint64_t)stats->yym * N - ymym;
+    // we descale by 8 to prevent overflow during the fnum/fden multiply.
+    const uint64_t num_S = (2 * (uint64_t)(sxy < 0 ? 0 : sxy) + C2) >> 8;
+    const uint64_t den_S = (sxx + syy + C2) >> 8;
+    const uint64_t fnum = (2 * xmym + C1) * num_S;
+    const uint64_t fden = (xmxm + ymym + C1) * den_S;
+    const double r = (double)fnum / fden;
+    return r;
+  }
+  return 1.;   // area is too dark to contribute meaningfully
+}
+
+double VP8SSIMFromStatsClipped(const VP8DistoStats* const stats) {
+  return SSIMCalculation(stats, stats->w);
+}
+
+static double SSIMGetClipped_C(const uint8_t* src1, int stride1,
+                               const uint8_t* src2, int stride2,
+                               int xo, int yo, int W, int H) {
+  VP8DistoStats stats = { 0, 0, 0, 0, 0, 0 };
+  const int ymin = (yo - VP8_SSIM_KERNEL < 0) ? 0 : yo - VP8_SSIM_KERNEL;
+  const int ymax = (yo + VP8_SSIM_KERNEL > H - 1) ? H - 1
+                                                  : yo + VP8_SSIM_KERNEL;
+  const int xmin = (xo - VP8_SSIM_KERNEL < 0) ? 0 : xo - VP8_SSIM_KERNEL;
+  const int xmax = (xo + VP8_SSIM_KERNEL > W - 1) ? W - 1
+                                                  : xo + VP8_SSIM_KERNEL;
+  int x, y;
+  src1 += ymin * stride1;
+  src2 += ymin * stride2;
+  for (y = ymin; y <= ymax; ++y, src1 += stride1, src2 += stride2) {
+    for (x = xmin; x <= xmax; ++x) {
+      const uint32_t w = kWeight[VP8_SSIM_KERNEL + x - xo]
+                       * kWeight[VP8_SSIM_KERNEL + y - yo];
+      const uint32_t s1 = src1[x];
+      const uint32_t s2 = src2[x];
+      stats.w   += w;
+      stats.xm  += w * s1;
+      stats.ym  += w * s2;
+      stats.xxm += w * s1 * s1;
+      stats.xym += w * s1 * s2;
+      stats.yym += w * s2 * s2;
+    }
+  }
+  return VP8SSIMFromStatsClipped(&stats);
+}
+
+static double GetMBSSIM(uint8_t Yin[16*16], uint8_t Yout4[16*16],
+		uint8_t UVin[8*16], uint8_t UVout[8*16]) {
+  int x, y;
+  double sum = 0.;
+
+  // compute SSIM in a 10 x 10 window
+  for (y = VP8_SSIM_KERNEL; y < 16 - VP8_SSIM_KERNEL; y++) {
+    for (x = VP8_SSIM_KERNEL; x < 16 - VP8_SSIM_KERNEL; x++) {
+      sum += SSIMGetClipped_C(Yin, 16, Yout4, 16, x, y, 16, 16);
+    }
+  }
+  for (x = 1; x < 7; x++) {
+    for (y = 1; y < 7; y++) {
+      sum += SSIMGetClipped_C(UVin, 16, UVout, 16, x, y, 8, 8);
+      sum += SSIMGetClipped_C(UVin + 8, 16, UVout + 8, 16, x, y, 8, 8);
+    }
+  }
+  return sum;
+}
+
+int NeedsFilter2_C(const uint8_t* p,
+                                      int step, int t, int it) {
+  const int p3 = p[-4 * step], p2 = p[-3 * step], p1 = p[-2 * step];
+  const int p0 = p[-step], q0 = p[0];
+  const int q1 = p[step], q2 = p[2 * step], q3 = p[3 * step];
+  if ((4 * abs(p0 - q0) + abs(p1 - q1)) > t) return 0;
+  return abs(p3 - p2) <= it && abs(p2 - p1) <= it &&
+		 abs(p1 - p0) <= it && abs(q3 - q2) <= it &&
+		 abs(q2 - q1) <= it && abs(q1 - q0) <= it;
+}
+
+void DoFilter2_C(uint8_t* p, int step) {
+  const int p1 = p[-2*step], p0 = p[-step], q0 = p[0], q1 = p[step];
+  const int tmp1 = p1 - q1;
+  const int a = 3 * (q0 - p0) + ((tmp1 < -128) ? -128 : (tmp1 > 127) ? 127 : tmp1);// in [-893,892]
+  const int tmp2 = (a + 4) >> 3;
+  const int tmp3 = (a + 3) >> 3;
+  const int a1 = (tmp2 < -16) ? -16 : (tmp2 > 15) ? 15 : tmp2;// in [-16,15]
+  const int a2 = (tmp3 < -16) ? -16 : (tmp3 > 15) ? 15 : tmp3;
+  const int tmp4 = p0 + a2;
+  const int tmp5 = q0 - a1;
+  p[-step] = (tmp4 < -128) ? -128 : (tmp4 > 127) ? 127 : tmp4;
+  p[    0] = (tmp5 < -128) ? -128 : (tmp5 > 127) ? 127 : tmp5;
+}
+
+void DoFilter4_C(uint8_t* p, int step) {
+  const int p1 = p[-2*step], p0 = p[-step], q0 = p[0], q1 = p[step];
+  const int a = 3 * (q0 - p0);
+  const int tmp2 = (a + 4) >> 3;
+  const int tmp3 = (a + 3) >> 3;
+  const int a1 = (tmp2 < -16) ? -16 : (tmp2 > 15) ? 15 : tmp2;// in [-16,15]
+  const int a2 = (tmp3 < -16) ? -16 : (tmp3 > 15) ? 15 : tmp3;
+  const int a3 = (a1 + 1) >> 1;
+  const int tmp4 = p1 + a3;
+  const int tmp5 = p0 + a2;
+  const int tmp6 = q0 - a1;
+  const int tmp7 = q1 - a3;
+  p[-2*step] = (tmp4 < -128) ? -128 : (tmp4 > 127) ? 127 : tmp4;
+  p[-  step] = (tmp5 < -128) ? -128 : (tmp5 > 127) ? 127 : tmp5;
+  p[      0] = (tmp6 < -128) ? -128 : (tmp6 > 127) ? 127 : tmp6;
+  p[   step] = (tmp7 < -128) ? -128 : (tmp7 > 127) ? 127 : tmp7;
+}
+
+int Hev(const uint8_t* p, int step, int thresh) {
+  const int p1 = p[-2*step], p0 = p[-step], q0 = p[0], q1 = p[step];
+  return (abs(p1 - p0) > thresh) || (abs(q1 - q0) > thresh);
+}
+
+void FilterLoop24_C(uint8_t* p, int hstride, int vstride, int size,
+		int thresh, int ithresh, int hev_thresh) {
+  const int thresh2 = 2 * thresh + 1;
+  while (size-- > 0) {
+    if (NeedsFilter2_C(p, hstride, thresh2, ithresh)) {
+      if (Hev(p, hstride, hev_thresh)) {
+        DoFilter2_C(p, hstride);
+      } else {
+        DoFilter4_C(p, hstride);
+      }
+    }
+    p += vstride;
+  }
+}
+
+static void HFilter16i_C(uint8_t* p, int stride,
+                         int thresh, int ithresh, int hev_thresh) {
+  int k;
+  for (k = 3; k > 0; --k) {
+    p += 4;
+    FilterLoop24_C(p, 1, stride, 16, thresh, ithresh, hev_thresh);
+  }
+}
+
+static void HFilter8i_C(uint8_t* u, uint8_t* v, int stride,
+                        int thresh, int ithresh, int hev_thresh) {
+  FilterLoop24_C(u + 4, 1, stride, 8, thresh, ithresh, hev_thresh);
+  FilterLoop24_C(v + 4, 1, stride, 8, thresh, ithresh, hev_thresh);
+}
+
+static void VFilter16i_C(uint8_t* p, int stride,
+                         int thresh, int ithresh, int hev_thresh) {
+  int k;
+  for (k = 3; k > 0; --k) {
+    p += 4 * stride;
+    FilterLoop24_C(p, stride, 1, 16, thresh, ithresh, hev_thresh);
+  }
+}
+
+static void VFilter8i_C(uint8_t* u, uint8_t* v, int stride,
+                        int thresh, int ithresh, int hev_thresh) {
+  FilterLoop24_C(u + 4 * stride, stride, 1, 8, thresh, ithresh, hev_thresh);
+  FilterLoop24_C(v + 4 * stride, stride, 1, 8, thresh, ithresh, hev_thresh);
+}
+
+static void DoFilter(uint8_t Yout4[16*16], uint8_t UVin[8*16], int level) {
+  const int ilevel = (level < 1) ? 1 : level;
+  const int limit = 2 * level + ilevel;
+  uint8_t Y[16*16],UV[8*16];
+
+  uint8_t* const y_dst = Y;
+  uint8_t* const u_dst = UV;
+  uint8_t* const v_dst = UV + 8;
+
+  // copy current block to yuv_out2_
+  int i;
+  for(i = 0; i < 256; i++){
+	  Y[i] = Yout4[i];
+  }
+  for(i = 0; i < 128; i++){
+	  UV[i] = UVin[i];
+  }
+
+  const int hev_thresh = (level >= 40) ? 2 : (level >= 15) ? 1 : 0;
+  HFilter16i_C(y_dst, 16, limit, ilevel, hev_thresh);
+  HFilter8i_C(u_dst, v_dst, 16, limit, ilevel, hev_thresh);
+  VFilter16i_C(y_dst, 16, limit, ilevel, hev_thresh);
+  VFilter8i_C(u_dst, v_dst, 16, limit, ilevel, hev_thresh);
+
+}
+
+void VP8StoreFilterStats(VP8SegmentInfo* const dqm, LFStats_My lf_stats,
+		uint8_t Yin[16*16], uint8_t Yout16[16*16], uint8_t Yout4[16*16],
+		uint8_t UVin[8*16], uint8_t UVout[8*16], ap_uint<1> mbtype, ap_uint<1> skip) {
+  int d;
+  const int level0 = dqm->fstrength_;
+
+  // explore +/-quant range of values around level0
+  const int delta_min = -dqm->quant_;
+  const int delta_max = dqm->quant_;
+  const int step_size = (delta_max - delta_min >= 4) ? 4 : 1;
+
+  // NOTE: Currently we are applying filter only across the sublock edges
+  // There are two reasons for that.
+  // 1. Applying filter on macro block edges will change the pixels in
+  // the left and top macro blocks. That will be hard to restore
+  // 2. Macro Blocks on the bottom and right are not yet compressed. So we
+  // cannot apply filter on the right and bottom macro block edges.
+
+  if (mbtype == 1 && skip) return;
+
+  // Always try filter level  zero
+  lf_stats[0] += GetMBSSIM(Yin, Yout4, UVin, UVout);
+
+  for (d = delta_min; d <= delta_max; d += step_size) {
+    const int level = level0 + d;
+    if (level <= 0 || level >= MAX_LF_LEVELS) {
+      continue;
+    }
+    DoFilter(Yout4, UVin, level);
+    lf_stats[level] += GetMBSSIM(Yin, Yout4, UVin, UVout);
+  }
+}
+
+void VP8IteratorSaveBoundary(VP8EncIterator* const it) {
+  VP8Encoder* const enc = it->enc_;
+  const int x = it->x_, y = it->y_;
+  const uint8_t* const ysrc = it->yuv_out_ + Y_OFF_ENC;
+  const uint8_t* const uvsrc = it->yuv_out_ + U_OFF_ENC;
+  if (x < enc->mb_w_ - 1) {   // left
+    int i;
+    for (i = 0; i < 16; ++i) {
+      it->y_left_[i] = ysrc[15 + i * BPS];
+    }
+    for (i = 0; i < 8; ++i) {
+      it->u_left_[i] = uvsrc[7 + i * BPS];
+      it->v_left_[i] = uvsrc[15 + i * BPS];
+    }
+    // top-left (before 'top'!)
+    it->y_left_[-1] = it->y_top_[15];
+    it->u_left_[-1] = it->uv_top_[0 + 7];
+    it->v_left_[-1] = it->uv_top_[8 + 7];
+  }
+  if (y < enc->mb_h_ - 1) {  // top
+    memcpy(it->y_top_, ysrc + 15 * BPS, 16);
+    memcpy(it->uv_top_, uvsrc + 7 * BPS, 8 + 8);
+  }
+}
