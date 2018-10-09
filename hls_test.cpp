@@ -1675,7 +1675,7 @@ void PickBestUV(VP8SegmentInfo* const dqm, uint8_t UVin[8*16], uint8_t UVPred[8]
   uint8_t* dst = UVout;
   VP8ModeScore rd_best;
   uint8_t tmp_p[4][8*16];
-  DError top_derr[1024], left_derr;
+  DError top_derr[1024] = {0}, left_derr = {0};
   int mode;
   int i, j, k;
 #pragma HLS ARRAY_PARTITION variable=tmp_dst complete dim=1
@@ -1683,6 +1683,16 @@ void PickBestUV(VP8SegmentInfo* const dqm, uint8_t UVin[8*16], uint8_t UVPred[8]
 #pragma HLS ARRAY_PARTITION variable=top_derr complete dim=2
 #pragma HLS ARRAY_PARTITION variable=top_derr complete dim=3
 #pragma HLS ARRAY_PARTITION variable=left_derr complete dim=0
+
+  if(x == 0){
+	  for (i = 0; i < 2; ++i) {
+#pragma HLS unroll
+		for (j = 0; j < 2; j = j + 16) {
+#pragma HLS unroll
+			left_derr[i][j] = 0;
+		}
+	  }
+  }
 
   for (i = 0; i < 4; ++i) {
 #pragma HLS unroll
@@ -2060,27 +2070,122 @@ void VP8StoreFilterStats(VP8SegmentInfo* const dqm, LFStats_My lf_stats,
   }
 }
 
-void VP8IteratorSaveBoundary(VP8EncIterator* const it) {
-  VP8Encoder* const enc = it->enc_;
-  const int x = it->x_, y = it->y_;
-  const uint8_t* const ysrc = it->yuv_out_ + Y_OFF_ENC;
-  const uint8_t* const uvsrc = it->yuv_out_ + U_OFF_ENC;
-  if (x < enc->mb_w_ - 1) {   // left
-    int i;
+typedef double LFStats_My[MAX_LF_LEVELS];
+
+typedef struct DATA {
+		uint8_t Yin[16*16];
+		uint8_t UVin[8*16];
+		uint8_t Yout16[16*16];
+		uint8_t Yout4[16*16];
+		uint8_t UVout[8*16];
+		VP8SegmentInfo* const dqm;
+		uint8_t left_y[16];
+		uint8_t top_y[20];
+		uint8_t top_left_y = 127;
+		uint8_t left_u[8];
+		uint8_t top_u[8];
+		uint8_t top_left_u = 127;
+		uint8_t left_v[8];
+		uint8_t top_v[8];
+		uint8_t top_left_v = 127;
+		int mbtype = 1;
+		int is_skipped = 0;
+		int x = 0;
+		int y = 0;
+		int mb_w;
+		int mb_h;
+		int count_down;
+		LFStats_My lf_stats;
+		} DATA;
+
+void VP8IteratorSaveBoundary(DATA* data_it) {
+  const uint8_t* const ysrc = data_it->mbtype ? data_it->Yout16 : data_it->Yout4;
+  const uint8_t* const uvsrc = data_it->UVout;
+  int i;
+  uint8_t top_y_tmp1[16];
+  uint8_t top_y_tmp2[16];
+  uint8_t mem_top_y[1024][16];
+  uint8_t mem_top_u[1024][8];
+  uint8_t mem_top_v[1024][8];
+
+  if (data_it->x < data_it->mb_w - 1) {   // left
     for (i = 0; i < 16; ++i) {
-      it->y_left_[i] = ysrc[15 + i * BPS];
+    	data_it->left_y[i] = ysrc[15 + i * 16];
     }
     for (i = 0; i < 8; ++i) {
-      it->u_left_[i] = uvsrc[7 + i * BPS];
-      it->v_left_[i] = uvsrc[15 + i * BPS];
+    	data_it->left_u[i] = uvsrc[7 + i * 16];
+    	data_it->left_v[i] = uvsrc[15 + i * 16];
     }
     // top-left (before 'top'!)
-    it->y_left_[-1] = it->y_top_[15];
-    it->u_left_[-1] = it->uv_top_[0 + 7];
-    it->v_left_[-1] = it->uv_top_[8 + 7];
+    data_it->top_left_y = data_it->top_y[15];
+    data_it->top_left_u = data_it->top_u[7];
+    data_it->top_left_v = data_it->top_v[7];
   }
-  if (y < enc->mb_h_ - 1) {  // top
-    memcpy(it->y_top_, ysrc + 15 * BPS, 16);
-    memcpy(it->uv_top_, uvsrc + 7 * BPS, 8 + 8);
+  else{
+	for (i = 0; i < 16; ++i) {
+		data_it->left_y[i] = 129;
+	}
+	for (i = 0; i < 8; ++i) {
+		data_it->left_u[i] = 129;
+		data_it->left_v[i] = 129;
+	}
+	// top-left (before 'top'!)
+	data_it->top_left_y = 129;
+	data_it->top_left_u = 129;
+	data_it->top_left_v = 129;
   }
+
+  if (data_it->y < data_it->mb_h - 1) {  // top mem
+	for (i = 0; i < 16; ++i) {
+		mem_top_y[data_it->x][i] = ysrc[15 * 16 + i];
+	}
+	for (i = 0; i < 8; ++i) {
+	  	mem_top_u[data_it->x][i] = uvsrc[7 * 16 + i];
+	  	mem_top_v[data_it->x][i] = uvsrc[7 * 16 + i + 8];
+	}
+  }
+
+  int tmp = (data_it->x < data_it->mb_w - 1) ? data_it->x + 1 : 0;
+  int tmp_p = (data_it->x + 1 < data_it->mb_w - 1) ? data_it->x + 2 : 0;
+
+	for (i = 0; i < 16; ++i) {
+		top_y_tmp1[i] = mem_top_y[tmp_p][i];
+		top_y_tmp2[i] = top_y_tmp1[i];
+	}
+
+  if (data_it->y == 0) {  // top
+	for (i = 0; i < 20; ++i) {
+		data_it->top_y[i] = 127;
+	}
+	for (i = 0; i < 8; ++i) {
+	  	data_it->top_u[i] = 127;
+	  	data_it->top_v[i] = 127;
+	}
+  }
+  else {  // top
+	for (i = 0; i < 16; ++i) {
+		data_it->top_y[i] = top_y_tmp2[i];
+	}
+	for (i = 0; i < 8; ++i) {
+		data_it->top_u[i] = mem_top_u[tmp][i];
+		data_it->top_v[i] = mem_top_v[tmp][i];
+	}
+	if (data_it->x < data_it->mb_w - 1) {
+		for (i = 0; i < 4; ++i) {
+			data_it->top_y[16 + i] = top_y_tmp1[i];
+		}
+	} else {    // else, replicate the last valid pixel four times
+		for (i = 16; i < 16 + 4; ++i) {
+			data_it->top_y[16 + i] = data_it->top_y[15];
+		}
+	}
+  }
+}
+
+
+int VP8IteratorNext(DATA* data_it) {
+  if (++data_it->x == data_it->mb_w) {
+	  data_it->x = 0;
+  }
+  return (0 < --data_it->count_down);
 }
