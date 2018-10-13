@@ -4096,6 +4096,32 @@ struct VP8LHashChain {
   int size_;
 };
 
+typedef struct PixOrCopyBlock PixOrCopyBlock;   // forward declaration
+typedef struct VP8LBackwardRefs VP8LBackwardRefs;
+
+typedef struct {
+  // mode as uint8_t to make the memory layout to be exactly 8 bytes.
+  uint8_t mode;
+  uint16_t len;
+  uint32_t argb_or_distance;
+} PixOrCopy;
+
+struct PixOrCopyBlock {
+  PixOrCopyBlock* next_;   // next block (or NULL)
+  PixOrCopy* start_;       // data start
+  int size_;               // currently used size
+};
+
+// Container for blocks chain
+struct VP8LBackwardRefs {
+  int block_size_;               // common block-size
+  int error_;                    // set to true if some memory error occurred
+  PixOrCopyBlock* refs_;         // list of currently used blocks
+  PixOrCopyBlock** tail_;        // for list recycling
+  PixOrCopyBlock* free_blocks_;  // free-list
+  PixOrCopyBlock* last_block_;   // used for adding new refs (internal)
+};
+
 typedef struct {
   const WebPConfig* config_;      // user configuration and parameters
   const WebPPicture* pic_;        // input picture.
@@ -5000,32 +5026,6 @@ int VP8LHashChainInit(VP8LHashChain* const p, int size) {
 
   return 1;
 }
-
-typedef struct PixOrCopyBlock PixOrCopyBlock;   // forward declaration
-typedef struct VP8LBackwardRefs VP8LBackwardRefs;
-
-typedef struct {
-  // mode as uint8_t to make the memory layout to be exactly 8 bytes.
-  uint8_t mode;
-  uint16_t len;
-  uint32_t argb_or_distance;
-} PixOrCopy;
-
-struct PixOrCopyBlock {
-  PixOrCopyBlock* next_;   // next block (or NULL)
-  PixOrCopy* start_;       // data start
-  int size_;               // currently used size
-};
-
-// Container for blocks chain
-struct VP8LBackwardRefs {
-  int block_size_;               // common block-size
-  int error_;                    // set to true if some memory error occurred
-  PixOrCopyBlock* refs_;         // list of currently used blocks
-  PixOrCopyBlock** tail_;        // for list recycling
-  PixOrCopyBlock* free_blocks_;  // free-list
-  PixOrCopyBlock* last_block_;   // used for adding new refs (internal)
-};
 
 #define MIN_BLOCK_SIZE 256  // minimum block size for backward references
 
