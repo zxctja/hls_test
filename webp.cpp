@@ -8,6 +8,7 @@
 #include <jerror.h>
 #include <setjmp.h>
 #include <stddef.h>
+#include <stdint.h>
 
 
 //typedef struct WebPConfig WebPConfig;
