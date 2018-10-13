@@ -2907,6 +2907,11 @@ typedef struct {
   score_t i4_penalty_;   // penalty for using Intra4
 } VP8SegmentInfo;
 
+enum { MAX_LF_LEVELS = 64,       // Maximum loop filter level
+       MAX_VARIABLE_LEVEL = 67,  // last (inclusive) level with variable cost
+       MAX_LEVEL = 2047          // max level (note: max codable is 2047 + 67)
+     };
+
 typedef uint32_t proba_t;   // 16b + 16b
 typedef uint8_t ProbaArray[NUM_CTX][NUM_PROBAS];
 typedef proba_t StatsArray[NUM_CTX][NUM_PROBAS];
@@ -2941,11 +2946,6 @@ typedef struct {
   unsigned int segment_:2;
   uint8_t alpha_;      // quantization-susceptibility
 } VP8MBInfo;
-
-enum { MAX_LF_LEVELS = 64,       // Maximum loop filter level
-       MAX_VARIABLE_LEVEL = 67,  // last (inclusive) level with variable cost
-       MAX_LEVEL = 2047          // max level (note: max codable is 2047 + 67)
-     };
 
 typedef double LFStats[NUM_MB_SEGMENTS][MAX_LF_LEVELS];  // filter stats
 
