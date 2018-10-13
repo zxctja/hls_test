@@ -9,6 +9,7 @@
 #include <setjmp.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <math.h>
 
 
 //typedef struct WebPConfig WebPConfig;
