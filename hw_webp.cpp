@@ -1,6 +1,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <ap_int.h>
+#include <stdint.h>
+#include <math.h>
 
 
 void Fill(uint8_t* dst, int value, int size) {
@@ -1770,7 +1772,7 @@ void PickBestUV(VP8SegmentInfo* const dqm, uint8_t UVin[8*16], uint8_t UVPred[8]
   StoreDiffusionErrors(top_derr, left_derr, x, rd);
 }
 
-void VP8Decimate(uint8_t Yin[16*16], uint8_t Yout16[16*16], uint8_t Yout4[16*16],
+void VP8Decimate_snap(uint8_t Yin[16*16], uint8_t Yout16[16*16], uint8_t Yout4[16*16],
 		VP8SegmentInfo* const dqm, uint8_t UVin[8*16], uint8_t UVout[8*16], int* is_skipped,
 		uint8_t left_y[16], uint8_t top_y[20], uint8_t top_left_y, ap_uint<1>* mbtype,
 		uint8_t left_u[8], uint8_t top_u[8], uint8_t top_left_u,uint8_t left_v[8],
@@ -2039,7 +2041,7 @@ static void DoFilter(uint8_t Yout4[16*16], uint8_t UVin[8*16], int level) {
 
 }
 
-void VP8StoreFilterStats(VP8SegmentInfo* const dqm, LFStats_My lf_stats,
+void VP8StoreFilterStats_snap(VP8SegmentInfo* const dqm, LFStats_My lf_stats,
 		uint8_t Yin[16*16], uint8_t Yout16[16*16], uint8_t Yout4[16*16],
 		uint8_t UVin[8*16], uint8_t UVout[8*16], ap_uint<1> mbtype, ap_uint<1> skip) {
   int d;
@@ -2080,7 +2082,7 @@ typedef struct DATA {
 		uint8_t Yout16[16*16];
 		uint8_t Yout4[16*16];
 		uint8_t UVout[8*16];
-		VP8SegmentInfo dqm;
+		VP8SegmentInfo const dqm;
 		uint8_t left_y[16];
 		uint8_t top_y[20];
 		uint8_t top_left_y = 127;
@@ -2100,7 +2102,7 @@ typedef struct DATA {
 		LFStats_My lf_stats;
 		} DATA;
 
-void VP8IteratorSaveBoundary(DATA* data_it) {
+void VP8IteratorSaveBoundary_snap(DATA* data_it) {
   const uint8_t* const ysrc = data_it->mbtype ? data_it->Yout16 : data_it->Yout4;
   const uint8_t* const uvsrc = data_it->UVout;
   int i;
@@ -2185,7 +2187,7 @@ void VP8IteratorSaveBoundary(DATA* data_it) {
 }
 
 
-int VP8IteratorNext(DATA* data_it) {
+int VP8IteratorNext_snap(DATA* data_it) {
   if (++data_it->x == data_it->mb_w) {
 	  data_it->x = 0;
   }
