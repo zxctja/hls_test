@@ -616,7 +616,7 @@ int ReconstructIntra16(
 }
 
 int ReconstructIntra4(int16_t levels[16], const uint8_t y_p[16],
-		const uint8_t const y_src[16], uint8_t y_out[16], VP8Matrix y1) {
+		const uint8_t y_src[16], uint8_t y_out[16], VP8Matrix y1) {
 //#pragma HLS PIPELINE
 #pragma HLS ARRAY_PARTITION variable=y1.sharpen_ complete dim=1
 #pragma HLS ARRAY_PARTITION variable=y1.zthresh_ complete dim=1
@@ -1609,6 +1609,7 @@ int PickBestIntra4(VP8SegmentInfo* const dqm, uint8_t Yin[16*16], uint8_t Yout[1
     SetRDScore(dqm->lambda_mode_, &rd_i4);
     AddScore(&rd_best, &rd_i4);
     if (rd_best.score >= rd->score) {
+	  *mbtype = 1;
       return 0;
     }
     rd->modes_i4[i4_] = best_mode;
@@ -1635,7 +1636,7 @@ int PickBestIntra4(VP8SegmentInfo* const dqm, uint8_t Yin[16*16], uint8_t Yout[1
         	rd->y_ac_levels[j][i] = rd_best.y_ac_levels[j][i];
         }
     }
-    *mbtype = 1;
+    *mbtype = 0;
   return 1;   // select intra4x4 over intra16x16
 }
 

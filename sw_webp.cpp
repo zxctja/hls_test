@@ -10,7 +10,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <math.h>
-#include <hw_webp.h>
+#include "hw_webp.h"
 
 
 //typedef struct WebPConfig WebPConfig;
@@ -2879,39 +2879,6 @@ typedef struct {
   void* data2;            // second argument passed to 'hook'
   int had_error;          // return value of the last call to 'hook'
 } WebPWorker;
-
-typedef struct VP8Matrix {
-  uint16_t q_[16];        // quantizer steps
-  uint16_t iq_[16];       // reciprocals, fixed point.
-  uint32_t bias_[16];     // rounding bias
-  uint32_t zthresh_[16];  // value below which a coefficient is zeroed
-  uint16_t sharpen_[16];  // frequency boosters for slight sharpening
-} VP8Matrix;
-
-typedef int64_t score_t;     // type used for scores, rate, distortion
-
-typedef struct {
-  VP8Matrix y1_, y2_, uv_;  // quantization matrices
-  int alpha_;      // quant-susceptibility, range [-127,127]. Zero is neutral.
-                   // Lower values indicate a lower risk of blurriness.
-  int beta_;       // filter-susceptibility, range [0,255].
-  int quant_;      // final segment quantizer.
-  int fstrength_;  // final in-loop filtering strength
-  int max_edge_;   // max edge delta (for filtering strength)
-  int min_disto_;  // minimum distortion required to trigger filtering record
-  // reactivities
-  int lambda_i16_, lambda_i4_, lambda_uv_;
-  int lambda_mode_, lambda_trellis_, tlambda_;
-  int lambda_trellis_i16_, lambda_trellis_i4_, lambda_trellis_uv_;
-
-  // lambda values for distortion-based evaluation
-  score_t i4_penalty_;   // penalty for using Intra4
-} VP8SegmentInfo;
-
-enum { MAX_LF_LEVELS = 64,       // Maximum loop filter level
-       MAX_VARIABLE_LEVEL = 67,  // last (inclusive) level with variable cost
-       MAX_LEVEL = 2047          // max level (note: max codable is 2047 + 67)
-     };
 
 typedef uint32_t proba_t;   // 16b + 16b
 typedef uint8_t ProbaArray[NUM_CTX][NUM_PROBAS];
@@ -13664,21 +13631,6 @@ static void SetLoopParams(VP8Encoder* const enc, float q) {
   ResetSSE(enc);
 }
 
-// Handy transient struct to accumulate score and info during RD-optimization
-// and mode evaluation.
-typedef struct {
-  score_t D, SD;              // Distortion, spectral distortion
-  score_t H, R, score;        // header bits, rate, score.
-  int16_t y_dc_levels[16];    // Quantized levels for luma-DC, luma-AC, chroma.
-  int16_t y_ac_levels[16][16];
-  int16_t uv_levels[4 + 4][16];
-  int mode_i16;               // mode number for intra16 prediction
-  uint8_t modes_i4[16];       // mode numbers for intra4 predictions
-  int mode_uv;                // mode number of chroma prediction
-  uint32_t nz;                // non-zero blocks
-  int8_t derr[2][3];          // DC diffusion errors for U/V for blocks #1/2/3
-} VP8ModeScore;
-
 // Init/Copy the common fields in score.
 static void InitScore(VP8ModeScore* const rd) {
   rd->D  = 0;
@@ -16354,25 +16306,44 @@ int VP8EncTokenLoop(VP8Encoder* const enc) {
 	memcpy(&data_it.dqm, &enc->dqm_[0], sizeof(data_it.dqm));
 	data_it.mb_w = enc->mb_w_;
 	data_it.mb_h = enc->mb_h_;
+	data_it.count_down = data_it.mb_w * data_it.mb_h;
 	for (i = 0; i < MAX_LF_LEVELS; i++) {
         (data_it.lf_stats)[i] = 0;
     }
 
     do {
       VP8ModeScore info;
-      VP8IteratorImport(&it, NULL);
-      VP8Decimate(&it, &info, rd_opt);
+	  
+	  memcpy(&data_it, mem_in + (data_it.y * data_it.mb_w + data_it.x) * 384, 384);
+	  
+	  VP8Decimate_snap(data_it.Yin, data_it.Yout16, data_it.Yout4,
+		&data_it.dqm, data_it.UVin, data_it.UVout, &data_it.is_skipped,
+		data_it.left_y, data_it.top_y, data_it.top_left_y, &data_it.mbtype,
+		data_it.left_u, data_it.top_u, data_it.top_left_u, data_it.left_v,
+		data_it.top_v, data_it.top_left_v, data_it.x, data_it.y, &info);
+
+	  it.mb_->type_ = data_it.mbtype == 1;
       ok = RecordTokens(&it, &info, &enc->tokens_);
+	  it.nz_ = ((data_it.x + 1) == data_it.mb_w) ? enc->nz_ :it.nz_ + 1;
+	  it.mb_ += 1;
       if (!ok) {
         WebPEncodingSetError(enc->pic_, VP8_ENC_ERROR_OUT_OF_MEMORY);
         break;
       }
       distortion += info.D;
-      StoreSideInfo(&it);
-      VP8StoreFilterStats(&it);
-      VP8IteratorExport(&it);
-      VP8IteratorSaveBoundary(&it);
-    } while (ok && VP8IteratorNext(&it));
+      //StoreSideInfo(&it);
+      
+	  VP8StoreFilterStats_snap(&data_it.dqm, data_it.lf_stats,
+		data_it.Yin, data_it.Yout16, data_it.Yout4,
+		data_it.UVin, data_it.UVout, data_it.mbtype, data_it.is_skipped);
+		
+      VP8IteratorSaveBoundary_snap(&data_it);
+
+    } while (ok && VP8IteratorNext_snap(&data_it));
+
+	for (i = 0; i < MAX_LF_LEVELS; i++) {
+        *it.lf_stats_[0][i] = data_it.lf_stats[i];
+    }
 
     // compute and store PSNR
       stats.value = GetPSNR(distortion, pixel_count);
