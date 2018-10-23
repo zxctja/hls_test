@@ -16307,9 +16307,9 @@ int VP8EncTokenLoop(VP8Encoder* const enc) {
 	data_it.mb_w = enc->mb_w_;
 	data_it.mb_h = enc->mb_h_;
 	data_it.count_down = data_it.mb_w * data_it.mb_h;
-	for (i = 0; i < MAX_LF_LEVELS; i++) {
+	/*for (i = 0; i < MAX_LF_LEVELS; i++) {
         (data_it.lf_stats)[i] = 0;
-    }
+    }*/
 
     do {
       VP8ModeScore info;
@@ -16333,17 +16333,17 @@ int VP8EncTokenLoop(VP8Encoder* const enc) {
       distortion += info.D;
       //StoreSideInfo(&it);
       
-	  VP8StoreFilterStats_snap(&data_it.dqm, data_it.lf_stats,
+	  /*VP8StoreFilterStats_snap(&data_it.dqm, data_it.lf_stats,
 		data_it.Yin, data_it.Yout16, data_it.Yout4,
-		data_it.UVin, data_it.UVout, data_it.mbtype, data_it.is_skipped);
+		data_it.UVin, data_it.UVout, data_it.mbtype, data_it.is_skipped);*/
 		
       VP8IteratorSaveBoundary_snap(&data_it);
 
     } while (ok && VP8IteratorNext_snap(&data_it));
 
-	for (i = 0; i < MAX_LF_LEVELS; i++) {
+	/*for (i = 0; i < MAX_LF_LEVELS; i++) {
         *it.lf_stats_[0][i] = data_it.lf_stats[i];
-    }
+    }*/
 
     // compute and store PSNR
       stats.value = GetPSNR(distortion, pixel_count);
