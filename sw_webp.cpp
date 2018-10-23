@@ -16307,6 +16307,11 @@ int VP8EncTokenLoop(VP8Encoder* const enc) {
 	data_it.mb_w = enc->mb_w_;
 	data_it.mb_h = enc->mb_h_;
 	data_it.count_down = data_it.mb_w * data_it.mb_h;
+	data_it.top_left_y = 127;
+	data_it.top_left_u = 127;
+	data_it.top_left_v = 127;
+	data_it.x = 0;
+	data_it.y = 0;
 	/*for (i = 0; i < MAX_LF_LEVELS; i++) {
         (data_it.lf_stats)[i] = 0;
     }*/

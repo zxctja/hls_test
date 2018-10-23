@@ -14110,6 +14110,20 @@ const uint16_t VP8FixedCostsI4[NUM_BMODES][NUM_BMODES][NUM_BMODES] = {
     {  305, 1167, 1358,  899, 1587, 1587,  987, 1988, 1332,  501 } }
 };
 
+static int64_t VP8GetCostLuma16(VP8ModeScore* rd_cur){
+	int64_t test_R = 0;
+	int y, x;
+	for (y = 1; y < 16; ++y) {
+	  for (x = 1; x < 16; ++x) {
+	    test_R += rd_cur->y_ac_levels[y][x] * rd_cur->y_ac_levels[y][x];
+	  }
+	}
+	for (y = 0; y < 16; ++y) {
+	  test_R += rd_cur->y_dc_levels[y] * rd_cur->y_dc_levels[y];
+	}
+	return test_R << 10;
+}
+
 static void PickBestIntra16(VP8EncIterator* const it, VP8ModeScore* rd) {
   const int kNumBlocks = 16;
   VP8SegmentInfo* const dqm = &it->enc_->dqm_[it->mb_->segment_];
@@ -14134,27 +14148,8 @@ static void PickBestIntra16(VP8EncIterator* const it, VP8ModeScore* rd) {
     rd_cur->SD =
         tlambda ? MULT_8B(tlambda, Disto16x16_C(src, tmp_dst, kWeightY)) : 0;
     rd_cur->H = VP8FixedCostsI16[mode];
-    /*rd_cur->R = VP8GetCostLuma16(it, rd_cur);
-
-    if (mode > 0 &&
-        IsFlat(rd_cur->y_ac_levels[0], kNumBlocks, FLATNESS_LIMIT_I16)) {
-      // penalty to avoid flat area to be mispredicted by complex mode
-      rd_cur->R += FLATNESS_PENALTY * kNumBlocks;
-    }*/
-
-	int64_t test_R = 0;
-	int y, x;
-	for (y = 1; y < 16; ++y) {
-	  for (x = 1; x < 16; ++x) {
-	    test_R += rd_cur->y_ac_levels[y][x] * rd_cur->y_ac_levels[y][x];
-	  }
-	}
-	for (y = 0; y < 16; ++y) {
-	  test_R += rd_cur->y_dc_levels[y] * rd_cur->y_dc_levels[y];
-	}
-	rd_cur->R = test_R << 10;
-	//fprintf(stdout, "%llu:%llu\n", rd_cur->R, test_R);
-
+    rd_cur->R = VP8GetCostLuma16(rd_cur);
+	
     // Since we always examine Intra16 first, we can overwrite *rd directly.
     SetRDScore(lambda, rd_cur);
 
@@ -14232,6 +14227,15 @@ static void Copy16x8_C(const uint8_t* src, uint8_t* dst) {
   Copy(src, dst, 16, 8);
 }
 
+static int64_t VP8GetCostLuma4(int16_t tmp_levels[16]){
+	int64_t test_R = 0;
+	int y;
+	for (y = 0; y < 16; ++y) {
+	  test_R += tmp_levels[y] * tmp_levels[y];
+	}
+	return test_R << 10;
+}
+
 static int PickBestIntra4(VP8EncIterator* const it, VP8ModeScore* const rd) {
   const VP8Encoder* const enc = it->enc_;
   const VP8SegmentInfo* const dqm = &enc->dqm_[it->mb_->segment_];
@@ -14279,27 +14283,8 @@ static int PickBestIntra4(VP8EncIterator* const it, VP8ModeScore* const rd) {
           tlambda ? MULT_8B(tlambda, Disto4x4_C(src, tmp_dst, kWeightY))
                   : 0;
       rd_tmp.H = mode_costs[mode];
-
-	  int64_t test_R = 0;
-	  int y;
-	  for (y = 0; y < 16; ++y) {
-		test_R += tmp_levels[y] * tmp_levels[y];
-	  }
-	  rd_tmp.R = test_R << 10;
-
-      /*// Add flatness penalty
-      if (mode > 0 && IsFlat(tmp_levels, kNumBlocks, FLATNESS_LIMIT_I4)) {
-        rd_tmp.R = FLATNESS_PENALTY * kNumBlocks;
-      } else {
-        rd_tmp.R = 0;
-      }
-
-      // early-out check
-      SetRDScore(lambda, &rd_tmp);
-      if (best_mode >= 0 && rd_tmp.score >= rd_i4.score) continue;
-
-      // finish computing score
-      rd_tmp.R += VP8GetCostLuma4(it, tmp_levels);*/
+      rd_tmp.R = VP8GetCostLuma4(tmp_levels);
+	  
       SetRDScore(lambda, &rd_tmp);
 
       if (best_mode < 0 || rd_tmp.score < rd_i4.score) {
@@ -14437,6 +14422,17 @@ static int ReconstructUV(VP8EncIterator* const it, VP8ModeScore* const rd,
   return (nz << 16);
 }
 
+static int64_t VP8GetCostUV(VP8ModeScore* rd_uv){
+	int64_t test_R = 0;
+	int x, y;
+	for (y = 0; y < 8; ++y) {
+	  for (x = 0; x < 16; ++x) {
+	    test_R += rd_uv->uv_levels[y][x] * rd_uv->uv_levels[y][x];
+	  }
+	}
+	return test_R << 10;
+}
+
 static void PickBestUV(VP8EncIterator* const it, VP8ModeScore* const rd) {
   const int kNumBlocks = 8;
   const VP8SegmentInfo* const dqm = &it->enc_->dqm_[it->mb_->segment_];
@@ -14460,21 +14456,7 @@ static void PickBestUV(VP8EncIterator* const it, VP8ModeScore* const rd) {
     rd_uv.D  = SSE16x8_C(src, tmp_dst);
     rd_uv.SD = 0;    // not calling TDisto here: it tends to flatten areas.
     rd_uv.H  = VP8FixedCostsUV[mode];
-
-	int64_t test_R = 0;
-	int x, y;
-	for (y = 0; y < 8; ++y) {
-	  for (x = 0; x < 16; ++x) {
-	    test_R += rd_uv.uv_levels[y][x] * rd_uv.uv_levels[y][x];
-	  }
-	}
-	rd_uv.R = test_R << 10;
-
-
-    /*rd_uv.R  = VP8GetCostUV(it, &rd_uv);
-    if (mode > 0 && IsFlat(rd_uv.uv_levels[0], kNumBlocks, FLATNESS_LIMIT_UV)) {
-      rd_uv.R += FLATNESS_PENALTY * kNumBlocks;
-    }*/
+	rd_uv.R  = VP8GetCostUV(&rd_uv);
 
     SetRDScore(lambda, &rd_uv);
 
