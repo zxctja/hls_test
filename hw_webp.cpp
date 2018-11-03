@@ -92,9 +92,9 @@ static void Intra16Preds_C(uint8_t YPred[4][16*16], uint8_t left_y[16],
 //#pragma HLS ARRAY_PARTITION variable=left_y complete dim=1
 //#pragma HLS ARRAY_PARTITION variable=YPred complete dim=0
   DCMode(YPred[0], left_y, top_y, 16, 16, 5);
-  VerticalPred(YPred[1], top_y, 16);
-  HorizontalPred(YPred[2], left_y, 16);
-  TrueMotion(YPred[3], left_y, top_y, top_left_y, 16, x, y);
+  VerticalPred(YPred[2], top_y, 16);
+  HorizontalPred(YPred[3], left_y, 16);
+  TrueMotion(YPred[1], left_y, top_y, top_left_y, 16, x, y);
 }
 
 static void IntraChromaPreds_C(
@@ -110,14 +110,14 @@ static void IntraChromaPreds_C(
 //#pragma HLS ARRAY_PARTITION variable=UVPred complete dim=0
   // U block
   DCMode(UVPred[0], left_u, top_u, 8, 8, 4);
-  VerticalPred(UVPred[1], top_u, 8);
-  HorizontalPred(UVPred[2], left_u, 8);
-  TrueMotion(UVPred[3], left_u, top_u, top_left_u, 8, x, y);
+  VerticalPred(UVPred[2], top_u, 8);
+  HorizontalPred(UVPred[3], left_u, 8);
+  TrueMotion(UVPred[1], left_u, top_u, top_left_u, 8, x, y);
   // V block
   DCMode(UVPred[4], left_v, top_v, 8, 8, 4);
-  VerticalPred(UVPred[5], top_v, 8);
-  HorizontalPred(UVPred[6], left_v, 8);
-  TrueMotion(UVPred[7], left_v, top_v, top_left_v, 8, x, y);
+  VerticalPred(UVPred[6], top_v, 8);
+  HorizontalPred(UVPred[7], left_v, 8);
+  TrueMotion(UVPred[5], left_v, top_v, top_left_v, 8, x, y);
 }
 
 // luma 4x4 prediction
@@ -315,7 +315,7 @@ static void Intra4Preds_C(
   LD4(Pred[6], top, top_right);
   VL4(Pred[7], top, top_right);
   HD4(Pred[8], left, top_left, top);
-  HU4(Pred[9], top);
+  HU4(Pred[9], left);
 }
 
 static void FTransform_C(const uint8_t* src, const uint8_t* ref, int16_t* out) {
@@ -1522,13 +1522,24 @@ static int PickBestIntra4(VP8SegmentInfo* const dqm, uint8_t Yin[16*16], uint8_t
   SetRDScore(dqm->lambda_mode_, &rd_best);
 
   int i4_ = 0;
+  uint8_t src[16][16];
+  
+  for(n = 0; n < 16; n++){
+//#pragma HLS unroll
+	for(j = 0; j < 4; j++){
+//#pragma HLS unroll
+		for(i = 0; i < 4; i++){
+//#pragma HLS unroll
+			src[n][j * 4 + i] = src0[VP8Scan[n] + j * 16 + i];
+		}
+	}
+  }
 
   do {
     const int kNumBlocks = 1;
     VP8ModeScore rd_i4;
     int mode;
     int best_mode = -1;
-    uint8_t src[16][16];
     const uint16_t* const mode_costs = VP8FixedCostsI4;
     uint8_t* best_block = best_blocks[i4_];
     uint8_t tmp_pred[10][16];    // scratch buffer.
@@ -1540,17 +1551,6 @@ static int PickBestIntra4(VP8SegmentInfo* const dqm, uint8_t Yin[16*16], uint8_t
 //#pragma HLS ARRAY_PARTITION variable=left complete dim=1
 //#pragma HLS ARRAY_PARTITION variable=top complete dim=1
 //#pragma HLS ARRAY_PARTITION variable=top_right complete dim=1
-
-    for(n = 0; n < 16; n++){
-//#pragma HLS unroll
-  	  for(j = 0; j < 4; j++){
-//#pragma HLS unroll
-  		  for(i = 0; i < 4; i++){
-//#pragma HLS unroll
-  			  src[n][j * 4 + i] = src0[VP8Scan[n] + j * 16 + i];
-  		  }
-  	  }
-    }
 
     InitScore(&rd_i4);
 
