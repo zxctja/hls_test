@@ -48,6 +48,8 @@ enum { MAX_LF_LEVELS = 64,       // Maximum loop filter level
 
 typedef double LFStats_My[MAX_LF_LEVELS];
 
+typedef int8_t DError[2 /* u/v */][2 /* top or left */];
+
 typedef struct DATA {
 		uint8_t Yin[16*16];
 		uint8_t UVin[8*16];
@@ -72,6 +74,13 @@ typedef struct DATA {
 		int mb_h;
 		int count_down;
 		LFStats_My lf_stats;
+		uint8_t top_y_tmp1[16];
+		uint8_t top_y_tmp2[16];
+		uint8_t mem_top_y[1024][16];
+		uint8_t mem_top_u[1024][8];
+		uint8_t mem_top_v[1024][8];
+		DError top_derr[1024];
+		DError left_derr;
 		} DATA;
 
 void VP8IteratorSaveBoundary_snap(DATA* data_it);
@@ -80,9 +89,9 @@ int VP8IteratorNext_snap(DATA* data_it);
 
 void VP8Decimate_snap(uint8_t Yin[16*16], uint8_t Yout16[16*16], uint8_t Yout4[16*16],
 		VP8SegmentInfo* const dqm, uint8_t UVin[8*16], uint8_t UVout[8*16], uint8_t* is_skipped,
-		uint8_t left_y[16], uint8_t top_y[20], uint8_t top_left_y, uint8_t* mbtype,
-		uint8_t left_u[8], uint8_t top_u[8], uint8_t top_left_u,uint8_t left_v[8],
-		uint8_t top_v[8], uint8_t top_left_v, int x, int y, VP8ModeScore* const rd);
+		uint8_t left_y[16], uint8_t top_y[20], uint8_t top_left_y, uint8_t* mbtype, uint8_t left_u[8], 
+		uint8_t top_u[8], uint8_t top_left_u,uint8_t left_v[8], uint8_t top_v[8], uint8_t top_left_v, 
+		int x, int y, VP8ModeScore* const rd, DError top_derr[1024], DError left_derr);
 		
 void VP8StoreFilterStats_snap(VP8SegmentInfo* const dqm, LFStats_My lf_stats,
 		uint8_t Yin[16*16], uint8_t Yout16[16*16], uint8_t Yout4[16*16],

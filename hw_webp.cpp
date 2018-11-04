@@ -19,20 +19,41 @@ static void Fill(uint8_t* dst, int value, int size) {
 }
 
 static void DCMode(uint8_t* dst, uint8_t* left, uint8_t* top,
-                               int size, int round, int shift) {
-//pragma HLS inline
+                               int size, int round, int shift, int x, int y) {
   int DC = 0;
   int j;
-	for (j = 0; j < size; ++j){
+
+  if (x != 0) {
+    if (y != 0) {
+  	  for (j = 0; j < size; ++j){
 //#pragma HLS unroll
-		DC += top[j] + left[j];
-	}
-  DC = (DC + round) >> shift;
-  Fill(dst, DC, size);
+	    DC += top[j] + left[j];
+	  }
+	  DC = (DC + round) >> shift;
+	  Fill(dst, DC, size);
+    } else {
+      for (j = 0; j < size; ++j){
+//#pragma HLS unroll
+		DC += left[j];
+	  }
+      DC = (DC + (round>>1)) >> (shift-1);
+	  Fill(dst, DC, size);
+    }
+  } else {
+    if (y != 0) {
+      for (j = 0; j < size; ++j){
+//#pragma HLS unroll
+		DC += top[j];
+	  }
+	  DC = (DC + (round>>1)) >> (shift-1);
+	  Fill(dst, DC, size);
+    } else {
+      Fill(dst, 0x80, size);
+    }
+  }
 }
 
 static void VerticalPred(uint8_t* dst, uint8_t* top, int size) {
-////#pragma HLS inline
   int i,j;
     for (j = 0; j < size; ++j) {
 //#pragma HLS unroll
@@ -44,7 +65,6 @@ static void VerticalPred(uint8_t* dst, uint8_t* top, int size) {
 }
 
 static void HorizontalPred(uint8_t* dst, uint8_t* left, int size) {
-////#pragma HLS inline
     int i,j;
     for (j = 0; j < size; ++j) {
 //#pragma HLS unroll
@@ -56,7 +76,6 @@ static void HorizontalPred(uint8_t* dst, uint8_t* left, int size) {
 }
 
 static void TrueMotion(uint8_t* dst, uint8_t* left, uint8_t* top, uint8_t top_left, int size, int x, int y) {
-////#pragma HLS inline
   int i,j;
   int tmp;
   if (x != 0) {
@@ -91,7 +110,7 @@ static void Intra16Preds_C(uint8_t YPred[4][16*16], uint8_t left_y[16],
 //#pragma HLS ARRAY_PARTITION variable=top_y complete dim=1
 //#pragma HLS ARRAY_PARTITION variable=left_y complete dim=1
 //#pragma HLS ARRAY_PARTITION variable=YPred complete dim=0
-  DCMode(YPred[0], left_y, top_y, 16, 16, 5);
+  DCMode(YPred[0], left_y, top_y, 16, 16, 5, x, y);
   VerticalPred(YPred[2], top_y, 16);
   HorizontalPred(YPred[3], left_y, 16);
   TrueMotion(YPred[1], left_y, top_y, top_left_y, 16, x, y);
@@ -109,12 +128,12 @@ static void IntraChromaPreds_C(
 //#pragma HLS ARRAY_PARTITION variable=left_v complete dim=1
 //#pragma HLS ARRAY_PARTITION variable=UVPred complete dim=0
   // U block
-  DCMode(UVPred[0], left_u, top_u, 8, 8, 4);
+  DCMode(UVPred[0], left_u, top_u, 8, 8, 4, x, y);
   VerticalPred(UVPred[2], top_u, 8);
   HorizontalPred(UVPred[3], left_u, 8);
   TrueMotion(UVPred[1], left_u, top_u, top_left_u, 8, x, y);
   // V block
-  DCMode(UVPred[4], left_v, top_v, 8, 8, 4);
+  DCMode(UVPred[4], left_v, top_v, 8, 8, 4, x, y);
   VerticalPred(UVPred[6], top_v, 8);
   HorizontalPred(UVPred[7], left_v, 8);
   TrueMotion(UVPred[5], left_v, top_v, top_left_v, 8, x, y);
@@ -630,8 +649,6 @@ static int ReconstructIntra4(int16_t levels[16], const uint8_t y_p[16],
   return nz;
 }
 
-typedef int8_t DError[2 /* u/v */][2 /* top or left */];
-
 #define C1 7    // fraction of error sent to the 4x4 block below
 #define C2 8    // fraction of error sent to the 4x4 block on the right
 #define DSHIFT 4
@@ -1058,255 +1075,6 @@ static void InitScore(VP8ModeScore* const rd) {
   rd->score = MAX_COST;
 }
 
-static void picki4b(int i4, uint8_t y_left[16], uint8_t y_top_left, uint8_t y_top[20],
-		uint8_t left[4], uint8_t* top_left, uint8_t top[4], uint8_t top_right[4]) {
-
-	int i;
-
-    switch(i4){
-    case 0 :
-    	*top_left = y_top_left;
-		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			left[i] = y_left[i];
-		}
-		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			top[i] = y_top[i];
-		}
-		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			top_right[i] = y_top[4+i];
-		}
-		break;
-    case 1 :
-    	*top_left = y_top[3];
-		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			left[i] = y_left[i];
-		}
-		for (i = 0; i <4; ++i) {
-//#pragma HLS unroll
-			top[i] = y_top[4+i];
-		}
-		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			top_right[i] = y_top[8+i];
-		}
-		break;
-    case 2 :
-    	*top_left = y_top[7];
-		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			left[i] = y_left[i];
-		}
-		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			top[i] = y_top[8+i];
-		}
-		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			top_right[i] = y_top[12+i];
-		}
-		break;
-    case 3 :
-    	*top_left = y_top[11];
-		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			left[i] = y_left[i];
-		}
-		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			top[i] = y_top[12+i];
-		}
-		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			top_right[i] = y_top[16+i];
-		}
-		break;
-    case 4 :
-    	*top_left = y_top_left;
-		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			left[i] = y_left[4+i];
-		}
-		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			top[i] = y_top[i];
-		}
-		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			top_right[i] = y_top[4+i];
-		}
-		break;
-    case 5 :
-    	*top_left = y_top[3];
-		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			left[i] = y_left[4+i];
-		}
-		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			top[i] = y_top[4+i];
-		}
-		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			top_right[i] = y_top[8+i];
-		}
-		break;
-    case 6 :
-    	*top_left = y_top[7];
-		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			left[i] = y_left[4+i];
-		}
-		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			top[i] = y_top[8+i];
-		}
-		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			top_right[i] = y_top[12+i];
-		}
-		break;
-    case 7 :
-    	*top_left = y_top[11];
-		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			left[i] = y_left[4+i];
-		}
-		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			top[i] = y_top[12+i];
-		}
-		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			top_right[i] = y_top[16+i];
-		}
-		break;
-    case 8 :
-    	*top_left = y_top_left;
-    	for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			left[i] = y_left[8+i];
-		}
-		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			top[i] = y_top[i];
-		}
-		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			top_right[i] = y_top[4+i];
-		}
-		break;
-    case 9 :
-    	*top_left = y_top[3];
-    	for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			left[i] = y_left[8+i];
-		}
-    	for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			top[i] = y_top[4+i];
-		}
-    	for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			top_right[i] = y_top[8+i];
-		}
-		break;
-    case 10 :
-    	*top_left = y_top[7];
-    	for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			left[i] = y_left[8+i];
-		}
-    	for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			top[i] = y_top[8+i];
-		}
-    	for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			top_right[i] = y_top[12+i];
-		}
-		break;
-    case 11 :
-    	*top_left = y_top[11];
-    	for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			left[i] = y_left[8+i];
-		}
-    	for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			top[i] = y_top[12+i];
-		}
-    	for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			top_right[i] = y_top[16+i];
-		}
-		break;
-    case 12 :
-    	*top_left = y_top_left;
-    	for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			left[i] = y_left[12+i];
-		}
-		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			top[i] = y_top[i];
-		}
-		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			top_right[i] = y_top[4+i];
-		}
-		break;
-    case 13 :
-    	*top_left = y_top[3];
-    	for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			left[i] = y_left[12+i];
-		}
-    	for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			top[i] = y_top[4+i];
-		}
-    	for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			top_right[i] = y_top[8+i];
-		}
-		break;
-    case 14 :
-    	*top_left = y_top[7];
-    	for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			left[i] = y_left[12+i];
-		}
-    	for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			top[i] = y_top[8+i];
-		}
-    	for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			top_right[i] = y_top[12+i];
-		}
-		break;
-    case 15 :
-    	*top_left = y_top[11];
-    	for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			left[i] = y_left[12+i];
-		}
-    	for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			top[i] = y_top[12+i];
-		}
-    	for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			top_right[i] = y_top[16+i];
-		}
-		break;
-    }
-}
-
 const uint16_t VP8FixedCostsI4[NUM_BMODES] =
    {   40, 1151, 1723, 1874, 2103, 2019, 1628, 1777, 2226, 2137 };
 
@@ -1323,146 +1091,151 @@ static void AddScore(VP8ModeScore* const dst, const VP8ModeScore* const src) {
   dst->score += src->score;
 }
 
-static int VP8IteratorRotateI4(uint8_t y_left[16], uint8_t* y_top_left, uint8_t y_top[20], int* i4_,
-                        uint8_t yuv_out[16][16]) {
+static int VP8IteratorRotateI4(uint8_t y_left[16], uint8_t y_top_left, uint8_t y_top[20], int* i4_, uint8_t top_mem[16],
+                        uint8_t yuv_out[16][16], uint8_t left[4], uint8_t* top_left, uint8_t top[4], uint8_t top_right[4]) {
   const uint8_t* const blk = yuv_out[*i4_];
   int i;
 
   switch(*i4_){
   case 0 :
-	  *y_top_left = y_left[3];
+		*top_left = y_top[3];
 		for (i = 0; i < 4; ++i) {
 //#pragma HLS unroll
-			y_left[i] = blk[3+4*i];
-		}
-		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			y_top[i] = blk[12+i];
+			left[i] = blk[3+4*i];
+			top[i] = y_top[4+i];
+			top_mem[i] = blk[12+i];
 		}
 		break;
   case 1 :
+		*top_left = y_top[7];
 		for (i = 0; i < 4; ++i) {
 //#pragma HLS unroll
-			y_left[i] = blk[3+4*i];
-		}
-		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			y_top[4+i] = blk[12+i];
+			left[i] = blk[3+4*i];
+			top[i] = y_top[8+i];
+			top_mem[4+i] = blk[12+i];
 		}
 		break;
   case 2 :
+  		*top_left = y_top[11];
 		for (i = 0; i < 4; ++i) {
 //#pragma HLS unroll
-			y_left[i] = blk[3+4*i];
-		}
-		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			y_top[8+i] = blk[12+i];
+			left[i] = blk[3+4*i];
+			top[12+i] = y_top[12+i];
+			top_mem[8+i] = blk[12+i];
 		}
 		break;
   case 3 :
+  		*top_left = y_left[3];
 		for (i = 0; i < 4; ++i) {
 //#pragma HLS unroll
-			y_top[12+i] = blk[12+i];
+			left[i] = y_left[4+i];
+			top[i] = top_mem[i];
+			top_mem[12+i] = blk[12+i];
 		}
 		break;
   case 4 :
-	  *y_top_left = y_left[7];
+		*top_left = top_mem[3];
 		for (i = 0; i < 4; ++i) {
 //#pragma HLS unroll
-			y_left[4+i] = blk[3+4*i];
-		}
-		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			y_top[i] = blk[12+i];
+			left[i] = blk[3+4*i];
+			top[i] = top_mem[4+i];
+			top_mem[i] = blk[12+i];
 		}
 		break;
   case 5 :
+  		*top_left = top_mem[7];
 		for (i = 0; i < 4; ++i) {
 //#pragma HLS unroll
-			y_left[4+i] = blk[3+4*i];
-		}
-		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			y_top[4+i] = blk[12+i];
+			left[i] = blk[3+4*i];
+			top[i] = top_mem[8+i];
+			top_mem[4+i] = blk[12+i];
 		}
 		break;
   case 6 :
+  		*top_left = top_mem[11];
 		for (i = 0; i < 4; ++i) {
 //#pragma HLS unroll
-			y_left[4+i] = blk[3+4*i];
-		}
-		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			y_top[8+i] = blk[12+i];
+			left[i] = blk[3+4*i];
+			top[i] = top_mem[12+i];
+			top_mem[8+i] = blk[12+i];
 		}
 		break;
   case 7 :
+  		*top_left = y_left[7];
 		for (i = 0; i < 4; ++i) {
 //#pragma HLS unroll
-			y_top[12+i] = blk[12+i];
+			left[i] = y_left[8+i];
+			top[i] = top_mem[i];
+			top_mem[12+i] = blk[12+i];
 		}
 		break;
   case 8 :
-	  *y_top_left = y_left[11];
+		*top_left = top_mem[3];
 		for (i = 0; i < 4; ++i) {
 //#pragma HLS unroll
-			y_left[8+i] = blk[3+4*i];
-		}
-		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			y_top[i] = blk[12+i];
+			left[i] = blk[3+4*i];
+			top[i] = top_mem[4+i];
+			top_mem[i] = blk[12+i];
 		}
 		break;
   case 9 :
+  		*top_left = top_mem[7];
 		for (i = 0; i < 4; ++i) {
 //#pragma HLS unroll
-			y_left[8+i] = blk[3+4*i];
-		}
-		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			y_top[4+i] = blk[12+i];
+			left[i] = blk[3+4*i];
+			top[i] = top_mem[8+i];
+			top_mem[4+i] = blk[12+i];
 		}
 		break;
   case 10 :
+  		*top_left = top_mem[11];
 		for (i = 0; i < 4; ++i) {
 //#pragma HLS unroll
-			y_left[8+i] = blk[3+4*i];
-		}
-		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
-			y_top[8+i] = blk[12+i];
+			left[i] = blk[3+4*i];
+			top[i] = top_mem[12+i];
+			top_mem[8+i] = blk[12+i];
 		}
 		break;
   case 11 :
+  		*top_left = y_left[11];
 		for (i = 0; i < 4; ++i) {
 //#pragma HLS unroll
-			y_top[12+i] = blk[12+i];
+			left[i] = y_left[12+i];
+			top[i] = top_mem[i];
+			top_mem[12+i] = blk[12+i];
 		}
 		break;
   case 12 :
+		*top_left = top_mem[3];
 		for (i = 0; i < 4; ++i) {
 //#pragma HLS unroll
-			y_left[12+i] = blk[3+4*i];
+			left[i] = blk[3+4*i];
+			top[i] = top_mem[4+i];
 		}
 		break;
   case 13 :
+		*top_left = top_mem[7];
 		for (i = 0; i < 4; ++i) {
 //#pragma HLS unroll
-			y_left[12+i] = blk[3+4*i];
+			left[i] = blk[3+4*i];
+			top[i] = top_mem[8+i];
 		}
 		break;
   case 14 :
+		*top_left = top_mem[11];
 		for (i = 0; i < 4; ++i) {
 //#pragma HLS unroll
-			y_left[12+i] = blk[3+4*i];
+			left[i] = blk[3+4*i];
+			top[i] = top_mem[12+i];
 		}
 		break;
   case 15 :
 	  	return 0;
   }
+  
   // move pointers to next sub-block
   ++(*i4_);
+  
   return 1;
 }
 
@@ -1492,8 +1265,11 @@ static int PickBestIntra4(VP8SegmentInfo* const dqm, uint8_t Yin[16*16], uint8_t
   const uint8_t* const src0 = Yin;
   uint8_t best_blocks[16][16];
   VP8ModeScore rd_best;
-  uint8_t i_left[16], i_top_left, i_top[20];
+  uint8_t left[4], top_left, top[4], top_right[4];
   int i, j, n;
+  int i4_ = 0;
+  uint8_t top_mem[16];
+  uint8_t src[16][16];
   const uint16_t VP8Scan[16] = {  // Luma
     0 +  0 * 16,  4 +  0 * 16, 8 +  0 * 16, 12 +  0 * 16,
     0 +  4 * 16,  4 +  4 * 16, 8 +  4 * 16, 12 +  4 * 16,
@@ -1503,37 +1279,41 @@ static int PickBestIntra4(VP8SegmentInfo* const dqm, uint8_t Yin[16*16], uint8_t
 
 //#pragma HLS ARRAY_PARTITION variable=best_blocks complete dim=0
 //#pragma HLS ARRAY_PARTITION variable=VP8Scan complete dim=1
-//#pragma HLS ARRAY_PARTITION variable=i_left complete dim=1
-//#pragma HLS ARRAY_PARTITION variable=i_top complete dim=1
 //#pragma HLS ARRAY_PARTITION variable=rd_best.y_ac_levels complete dim=0
+//#pragma HLS ARRAY_PARTITION variable=left complete dim=1
+//#pragma HLS ARRAY_PARTITION variable=top complete dim=1
+//#pragma HLS ARRAY_PARTITION variable=top_right complete dim=1
+//#pragma HLS ARRAY_PARTITION variable=src complete dim=0
 
-  i_top_left = y_top_left;
-  for (i = 0; i < 16; ++i) {
+  top_left = y_top_left;
+  for (i = 0; i < 4; ++i) {
 //#pragma HLS unroll
-	  i_left[i] = y_left[i];
+	  left[i] = y_left[i];
   }
-  for (i = 0; i < 20; ++i) {
+  for (i = 0; i < 4; ++i) {
 //#pragma HLS unroll
-	  i_top[i] = y_top[i];
+	  top[i] = y_top[i];
   }
+  for (i = 0; i < 4; ++i) {
+//#pragma HLS unroll
+	  top_right[i] = y_top[4+i];
+  }
+	
+  for(n = 0; n < 16; n++){
+//#pragma HLS unroll
+    for(j = 0; j < 4; j++){
+//#pragma HLS unroll
+	  for(i = 0; i < 4; i++){
+//#pragma HLS unroll
+		  src[n][j * 4 + i] = src0[VP8Scan[n] + j * 16 + i];
+	  }
+    }
+  }
+
 
   InitScore(&rd_best);
   rd_best.H = 211;  // '211' is the value of VP8BitCost(0, 145)
   SetRDScore(dqm->lambda_mode_, &rd_best);
-
-  int i4_ = 0;
-  uint8_t src[16][16];
-  
-  for(n = 0; n < 16; n++){
-//#pragma HLS unroll
-	for(j = 0; j < 4; j++){
-//#pragma HLS unroll
-		for(i = 0; i < 4; i++){
-//#pragma HLS unroll
-			src[n][j * 4 + i] = src0[VP8Scan[n] + j * 16 + i];
-		}
-	}
-  }
 
   do {
     const int kNumBlocks = 1;
@@ -1543,18 +1323,11 @@ static int PickBestIntra4(VP8SegmentInfo* const dqm, uint8_t Yin[16*16], uint8_t
     const uint16_t* const mode_costs = VP8FixedCostsI4;
     uint8_t* best_block = best_blocks[i4_];
     uint8_t tmp_pred[10][16];    // scratch buffer.
-    uint8_t left[4], top_left, top[4], top_right[4];
 
-//#pragma HLS ARRAY_PARTITION variable=src complete dim=0
 //#pragma HLS ARRAY_PARTITION variable=VP8FixedCostsI4 complete dim=1
 //#pragma HLS ARRAY_PARTITION variable=tmp_pred complete dim=0
-//#pragma HLS ARRAY_PARTITION variable=left complete dim=1
-//#pragma HLS ARRAY_PARTITION variable=top complete dim=1
-//#pragma HLS ARRAY_PARTITION variable=top_right complete dim=1
 
     InitScore(&rd_i4);
-
-    picki4b(i4_, i_left, i_top_left, i_top, left, &top_left, top, top_right);
 
     Intra4Preds_C(tmp_pred, left, top_left, top, top_right);
 
@@ -1590,7 +1363,8 @@ static int PickBestIntra4(VP8SegmentInfo* const dqm, uint8_t Yin[16*16], uint8_t
       return 0;
     }
     rd->modes_i4[i4_] = best_mode;
-  } while (VP8IteratorRotateI4(i_left, &i_top_left, i_top, &i4_, best_blocks));
+  } while (VP8IteratorRotateI4(y_left, y_top_left, 
+  y_top, &i4_, top_mem, best_blocks, left, &top_left, top, top_right));
 
   // finalize state
   CopyScore(rd, &rd_best);
@@ -1648,8 +1422,39 @@ static int64_t VP8GetCostUV(VP8ModeScore* rd_uv){
 	return test_R << 10;
 }
 
+static void CopyUVLevel(int16_t dst[4 + 4][16], int16_t src[4 + 4][16]) {
+  int i, j;
+  for (j = 0; j < 8; ++j) {
+//#pragma HLS unroll
+	  for (i = 0; i < 16; ++i) {
+//#pragma HLS unroll
+		  dst[j][i] = src[j][i];
+	  }
+  }
+}
+
+static void CopyUVderr(int8_t dst[2][3], int8_t src[2][3]) {
+  int i, j;
+	for (j = 0; j < 2; ++j) {
+//#pragma HLS unroll
+		for (i = 0; i < 3; ++i) {
+//#pragma HLS unroll
+			dst[j][i] = src[j][i];
+		}
+	}
+}
+
+	
+static void CopyUVout(uint8_t dst[8*16], uint8_t src[8*16]) {
+  int j;
+  for (j = 0; j < 128; ++j) {
+//#pragma HLS unroll
+	  dst[j] = src[j];
+  }
+}
+
 static void PickBestUV(VP8SegmentInfo* const dqm, uint8_t UVin[8*16], uint8_t UVPred[8][8*8],
-		uint8_t UVout[8*16], VP8ModeScore* const rd, int x) {
+		uint8_t UVout[8*16], VP8ModeScore* const rd, int x, DError top_derr[1024], DError left_derr) {
 //#pragma HLS ARRAY_PARTITION variable=UVout complete dim=1
 //#pragma HLS ARRAY_PARTITION variable=UVin complete dim=1
 //#pragma HLS ARRAY_PARTITION variable=UVPred complete dim=0
@@ -1666,7 +1471,6 @@ static void PickBestUV(VP8SegmentInfo* const dqm, uint8_t UVin[8*16], uint8_t UV
   uint8_t* dst = UVout;
   VP8ModeScore rd_best;
   uint8_t tmp_p[4][8*16];
-  DError top_derr[1024] = {0}, left_derr = {0};
   int mode;
   int i, j, k;
 //#pragma HLS ARRAY_PARTITION variable=tmp_dst complete dim=1
@@ -1674,16 +1478,6 @@ static void PickBestUV(VP8SegmentInfo* const dqm, uint8_t UVin[8*16], uint8_t UV
 //#pragma HLS ARRAY_PARTITION variable=top_derr complete dim=2
 //#pragma HLS ARRAY_PARTITION variable=top_derr complete dim=3
 //#pragma HLS ARRAY_PARTITION variable=left_derr complete dim=0
-
-  if(x == 0){
-	  for (i = 0; i < 2; ++i) {
-//#pragma HLS unroll
-		for (j = 0; j < 2; j = j + 16) {
-//#pragma HLS unroll
-			left_derr[i][j] = 0;
-		}
-	  }
-  }
 
   for (i = 0; i < 4; ++i) {
 //#pragma HLS unroll
@@ -1723,24 +1517,9 @@ static void PickBestUV(VP8SegmentInfo* const dqm, uint8_t UVin[8*16], uint8_t UV
     if (rd_uv.score < rd_best.score) {
       CopyScore(&rd_best, &rd_uv);
       rd->mode_uv = mode;
-      for (j = 0; j < 8; ++j) {
-//#pragma HLS unroll
-          for (i = 0; i < 16; ++i) {
-//#pragma HLS unroll
-        	  rd->uv_levels[j][i] = rd_uv.uv_levels[j][i];
-          }
-      }
-      for (j = 0; j < 2; ++j) {
-//#pragma HLS unroll
-          for (i = 0; i < 3; ++i) {
-//#pragma HLS unroll
-        	  rd->derr[j][i] = rd_uv.derr[j][i];
-          }
-      }
-      for (j = 0; j < 128; ++j) {
-//#pragma HLS unroll
-    	  dst[j] = tmp_dst[j];
-      }
+	  CopyUVLevel(rd->uv_levels, rd_uv.uv_levels);
+	  CopyUVderr(rd->derr, rd_uv.derr);
+	  CopyUVout(dst, tmp_dst);
     }
   }
 
@@ -1751,9 +1530,9 @@ static void PickBestUV(VP8SegmentInfo* const dqm, uint8_t UVin[8*16], uint8_t UV
 
 void VP8Decimate_snap(uint8_t Yin[16*16], uint8_t Yout16[16*16], uint8_t Yout4[16*16],
 		VP8SegmentInfo* const dqm, uint8_t UVin[8*16], uint8_t UVout[8*16], uint8_t* is_skipped,
-		uint8_t left_y[16], uint8_t top_y[20], uint8_t top_left_y, uint8_t* mbtype,
-		uint8_t left_u[8], uint8_t top_u[8], uint8_t top_left_u,uint8_t left_v[8],
-		uint8_t top_v[8], uint8_t top_left_v, int x, int y, VP8ModeScore* const rd) {
+		uint8_t left_y[16], uint8_t top_y[20], uint8_t top_left_y, uint8_t* mbtype, uint8_t left_u[8], 
+		uint8_t top_u[8], uint8_t top_left_u,uint8_t left_v[8], uint8_t top_v[8], uint8_t top_left_v, 
+		int x, int y, VP8ModeScore* const rd, DError top_derr[1024], DError left_derr) {
 
   uint8_t YPred[4][16*16];
   uint8_t UVPred[8][8*8];
@@ -1801,7 +1580,7 @@ void VP8Decimate_snap(uint8_t Yin[16*16], uint8_t Yout16[16*16], uint8_t Yout4[1
 
   PickBestIntra16(Yin, Yout16, YPred, rd, dqm);
   PickBestIntra4(dqm, Yin, Yout4, rd, left_y, top_left_y, top_y, mbtype);
-  PickBestUV(dqm, UVin, UVPred, UVout, rd, x);
+  PickBestUV(dqm, UVin, UVPred, UVout, rd, x, top_derr, left_derr);
 
   *is_skipped = (rd->nz == 0);
 }
@@ -2053,11 +1832,11 @@ void VP8IteratorSaveBoundary_snap(DATA* data_it) {
   const uint8_t* const ysrc = data_it->mbtype ? data_it->Yout16 : data_it->Yout4;
   const uint8_t* const uvsrc = data_it->UVout;
   int i;
-  uint8_t top_y_tmp1[16];
-  uint8_t top_y_tmp2[16];
-  uint8_t mem_top_y[1024][16];
-  uint8_t mem_top_u[1024][8];
-  uint8_t mem_top_v[1024][8];
+  uint8_t* top_y_tmp1 = data_it->top_y_tmp1;
+  uint8_t* top_y_tmp2 = data_it->top_y_tmp2;
+  uint8_t(*mem_top_y)[16] = data_it->mem_top_y;
+  uint8_t(*mem_top_u)[8] = data_it->mem_top_u;
+  uint8_t(*mem_top_v)[8] = data_it->mem_top_v;
 
   if (data_it->x < data_it->mb_w - 1) {   // left
     for (i = 0; i < 16; ++i) {
@@ -2097,14 +1876,14 @@ void VP8IteratorSaveBoundary_snap(DATA* data_it) {
   }
 
   int tmp = (data_it->x < data_it->mb_w - 1) ? data_it->x + 1 : 0;
-  int tmp_p = (data_it->x + 1 < data_it->mb_w - 1) ? data_it->x + 2 : 0;
+  int tmp_p = (data_it->x + 1 < data_it->mb_w - 1) ?  data_it->x + 2 : (data_it->x < data_it->mb_w - 1) ? 0 : 1;
 
 	for (i = 0; i < 16; ++i) {
-		top_y_tmp1[i] = mem_top_y[tmp_p][i];
 		top_y_tmp2[i] = top_y_tmp1[i];
+		top_y_tmp1[i] = mem_top_y[tmp_p][i];
 	}
 
-  if (data_it->y == 0) {  // top
+  if ((data_it->y == 0)&&(data_it->x < data_it->mb_w - 1)) {  // top
 	for (i = 0; i < 20; ++i) {
 		data_it->top_y[i] = 127;
 	}
@@ -2121,22 +1900,29 @@ void VP8IteratorSaveBoundary_snap(DATA* data_it) {
 		data_it->top_u[i] = mem_top_u[tmp][i];
 		data_it->top_v[i] = mem_top_v[tmp][i];
 	}
-	if (data_it->x < data_it->mb_w - 1) {
+	if (data_it->x == data_it->mb_w - 2) {
 		for (i = 0; i < 4; ++i) {
-			data_it->top_y[16 + i] = top_y_tmp1[i];
-		}
-	} else {    // else, replicate the last valid pixel four times
-		for (i = 16; i < 16 + 4; ++i) {
 			data_it->top_y[16 + i] = data_it->top_y[15];
 		}
+	} else {
+		for (i = 0; i < 4; ++i) {
+			data_it->top_y[16 + i] = top_y_tmp1[i];
+		}		
 	}
   }
 }
 
 
 int VP8IteratorNext_snap(DATA* data_it) {
+  int i, j;
   if (++data_it->x == data_it->mb_w) {
 	  data_it->x = 0;
+	  ++data_it->y;
+	  for(j=0;j<2;j++){
+	  	for(i=0;i<2;i++){
+			data_it->left_derr[j][i] = 0;
+	  	}
+	  }
   }
   return (0 < --data_it->count_down);
 }

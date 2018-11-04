@@ -2917,8 +2917,6 @@ typedef struct {
 
 typedef double LFStats[NUM_MB_SEGMENTS][MAX_LF_LEVELS];  // filter stats
 
-typedef int8_t DError[2 /* u/v */][2 /* top or left */];
-
 struct VP8Encoder {
   const WebPConfig* config_;    // user configuration and parameters
   WebPPicture* pic_;            // input / output picture
@@ -16303,6 +16301,8 @@ int VP8EncTokenLoop(VP8Encoder* const enc) {
 	memset(data_it.left_u, 129, 8);
 	memset(data_it.left_v, 129, 8);
 	memcpy(&data_it.dqm, &enc->dqm_[0], sizeof(data_it.dqm));
+	memset(data_it.top_derr, 0, sizeof(data_it.top_derr));
+	memset(data_it.left_derr, 0, sizeof(data_it.left_derr));
 	data_it.mb_w = enc->mb_w_;
 	data_it.mb_h = enc->mb_h_;
 	data_it.count_down = data_it.mb_w * data_it.mb_h;
@@ -16311,20 +16311,17 @@ int VP8EncTokenLoop(VP8Encoder* const enc) {
 	data_it.top_left_v = 127;
 	data_it.x = 0;
 	data_it.y = 0;
-	/*for (i = 0; i < MAX_LF_LEVELS; i++) {
-        (data_it.lf_stats)[i] = 0;
-    }*/
 
     do {
       VP8ModeScore info;
 	  
 	  memcpy(&data_it, mem_in + (data_it.y * data_it.mb_w + data_it.x) * 384, 384);
 	  
-	  VP8Decimate_snap(data_it.Yin, data_it.Yout16, data_it.Yout4,
-		&data_it.dqm, data_it.UVin, data_it.UVout, &data_it.is_skipped,
-		data_it.left_y, data_it.top_y, data_it.top_left_y, &data_it.mbtype,
-		data_it.left_u, data_it.top_u, data_it.top_left_u, data_it.left_v,
-		data_it.top_v, data_it.top_left_v, data_it.x, data_it.y, &info);
+	  VP8Decimate_snap(data_it.Yin, data_it.Yout16, data_it.Yout4, &data_it.dqm, 
+	  	data_it.UVin, data_it.UVout, &data_it.is_skipped, data_it.left_y, 
+	  	data_it.top_y, data_it.top_left_y, &data_it.mbtype, data_it.left_u, 
+	  	data_it.top_u, data_it.top_left_u, data_it.left_v, data_it.top_v, 
+	  	data_it.top_left_v, data_it.x, data_it.y, &info, data_it.top_derr, data_it.left_derr);
 
 	  it.mb_->type_ = data_it.mbtype == 1;
       ok = RecordTokens(&it, &info, &enc->tokens_);
@@ -16336,18 +16333,10 @@ int VP8EncTokenLoop(VP8Encoder* const enc) {
       }
       distortion += info.D;
       //StoreSideInfo(&it);
-      
-	  /*VP8StoreFilterStats_snap(&data_it.dqm, data_it.lf_stats,
-		data_it.Yin, data_it.Yout16, data_it.Yout4,
-		data_it.UVin, data_it.UVout, data_it.mbtype, data_it.is_skipped);*/
-		
+
       VP8IteratorSaveBoundary_snap(&data_it);
 
     } while (ok && VP8IteratorNext_snap(&data_it));
-
-	/*for (i = 0; i < MAX_LF_LEVELS; i++) {
-        *it.lf_stats_[0][i] = data_it.lf_stats[i];
-    }*/
 
     // compute and store PSNR
       stats.value = GetPSNR(distortion, pixel_count);
