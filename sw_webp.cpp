@@ -16323,23 +16323,25 @@ int VP8EncTokenLoop(VP8Encoder* const enc) {
 	  	data_it.top_y, data_it.top_left_y, &data_it.mbtype, data_it.left_u, 
 	  	data_it.top_u, data_it.top_left_u, data_it.left_v, data_it.top_v, 
 	  	data_it.top_left_v, data_it.x, data_it.y, &info, data_it.top_derr, data_it.left_derr);
+	  
+	  uint8_t* preds = it.preds_;
 
 	  if(data_it.mbtype == 1){
 		it.mb_->type_ = 1;
 		for(j = 0; j < 4; ++j){
 		  for(i = 0; i < 4; ++i){
-			it.preds_[i] = info.mode_i16;
+			preds[i] = info.mode_i16;
 		  }
-		  it.preds_ += enc->preds_w_;
+		  preds += enc->preds_w_;
 		}
 	  }
 	  else{
 		it.mb_->type_ = 0;
 		for(j = 0; j < 4; ++j){
 		  for(i = 0; i < 4; ++i){
-			it.preds_[i] = info.modes_i4[j*4+i];
+			preds[i] = info.modes_i4[j*4+i];
 		  }
-		  it.preds_ += enc->preds_w_;
+		  preds += enc->preds_w_;
 		}
 	  }
 	  it.mb_->uv_mode_ = info.mode_uv;
