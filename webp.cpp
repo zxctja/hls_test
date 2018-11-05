@@ -16298,9 +16298,9 @@ int VP8EncTokenLoop(VP8Encoder* const enc) {
         break;
       }
       distortion += info.D;
-      StoreSideInfo(&it);
-      VP8StoreFilterStats(&it);
-      VP8IteratorExport(&it);
+      //StoreSideInfo(&it);
+      //VP8StoreFilterStats(&it);
+      //VP8IteratorExport(&it);
       VP8IteratorSaveBoundary(&it);
     } while (ok && VP8IteratorNext(&it));
 

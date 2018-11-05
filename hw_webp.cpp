@@ -1103,6 +1103,7 @@ static int VP8IteratorRotateI4(uint8_t y_left[16], uint8_t y_top_left, uint8_t y
 //#pragma HLS unroll
 			left[i] = blk[3+4*i];
 			top[i] = y_top[4+i];
+			top_right[i] = y_top[8+i];
 			top_mem[i] = blk[12+i];
 		}
 		break;
@@ -1112,6 +1113,7 @@ static int VP8IteratorRotateI4(uint8_t y_left[16], uint8_t y_top_left, uint8_t y
 //#pragma HLS unroll
 			left[i] = blk[3+4*i];
 			top[i] = y_top[8+i];
+			top_right[i] = y_top[12+i];
 			top_mem[4+i] = blk[12+i];
 		}
 		break;
@@ -1120,7 +1122,8 @@ static int VP8IteratorRotateI4(uint8_t y_left[16], uint8_t y_top_left, uint8_t y
 		for (i = 0; i < 4; ++i) {
 //#pragma HLS unroll
 			left[i] = blk[3+4*i];
-			top[12+i] = y_top[12+i];
+			top[i] = y_top[12+i];
+			top_right[i] = y_top[16+i];
 			top_mem[8+i] = blk[12+i];
 		}
 		break;
@@ -1130,6 +1133,7 @@ static int VP8IteratorRotateI4(uint8_t y_left[16], uint8_t y_top_left, uint8_t y
 //#pragma HLS unroll
 			left[i] = y_left[4+i];
 			top[i] = top_mem[i];
+			top_right[i] = top_mem[4+i];
 			top_mem[12+i] = blk[12+i];
 		}
 		break;
@@ -1139,6 +1143,7 @@ static int VP8IteratorRotateI4(uint8_t y_left[16], uint8_t y_top_left, uint8_t y
 //#pragma HLS unroll
 			left[i] = blk[3+4*i];
 			top[i] = top_mem[4+i];
+			top_right[i] = top_mem[8+i];
 			top_mem[i] = blk[12+i];
 		}
 		break;
@@ -1148,6 +1153,7 @@ static int VP8IteratorRotateI4(uint8_t y_left[16], uint8_t y_top_left, uint8_t y
 //#pragma HLS unroll
 			left[i] = blk[3+4*i];
 			top[i] = top_mem[8+i];
+			top_right[i] = top_mem[12+i];
 			top_mem[4+i] = blk[12+i];
 		}
 		break;
@@ -1157,6 +1163,7 @@ static int VP8IteratorRotateI4(uint8_t y_left[16], uint8_t y_top_left, uint8_t y
 //#pragma HLS unroll
 			left[i] = blk[3+4*i];
 			top[i] = top_mem[12+i];
+			top_right[i] = y_top[16+i];
 			top_mem[8+i] = blk[12+i];
 		}
 		break;
@@ -1166,6 +1173,7 @@ static int VP8IteratorRotateI4(uint8_t y_left[16], uint8_t y_top_left, uint8_t y
 //#pragma HLS unroll
 			left[i] = y_left[8+i];
 			top[i] = top_mem[i];
+			top_right[i] = top_mem[4+i];
 			top_mem[12+i] = blk[12+i];
 		}
 		break;
@@ -1175,6 +1183,7 @@ static int VP8IteratorRotateI4(uint8_t y_left[16], uint8_t y_top_left, uint8_t y
 //#pragma HLS unroll
 			left[i] = blk[3+4*i];
 			top[i] = top_mem[4+i];
+			top_right[i] = top_mem[8+i];
 			top_mem[i] = blk[12+i];
 		}
 		break;
@@ -1184,6 +1193,7 @@ static int VP8IteratorRotateI4(uint8_t y_left[16], uint8_t y_top_left, uint8_t y
 //#pragma HLS unroll
 			left[i] = blk[3+4*i];
 			top[i] = top_mem[8+i];
+			top_right[i] = top_mem[12+i];
 			top_mem[4+i] = blk[12+i];
 		}
 		break;
@@ -1193,6 +1203,7 @@ static int VP8IteratorRotateI4(uint8_t y_left[16], uint8_t y_top_left, uint8_t y
 //#pragma HLS unroll
 			left[i] = blk[3+4*i];
 			top[i] = top_mem[12+i];
+			top_right[i] = y_top[16+i];
 			top_mem[8+i] = blk[12+i];
 		}
 		break;
@@ -1202,6 +1213,7 @@ static int VP8IteratorRotateI4(uint8_t y_left[16], uint8_t y_top_left, uint8_t y
 //#pragma HLS unroll
 			left[i] = y_left[12+i];
 			top[i] = top_mem[i];
+			top_right[i] = top_mem[4+i];
 			top_mem[12+i] = blk[12+i];
 		}
 		break;
@@ -1211,6 +1223,7 @@ static int VP8IteratorRotateI4(uint8_t y_left[16], uint8_t y_top_left, uint8_t y
 //#pragma HLS unroll
 			left[i] = blk[3+4*i];
 			top[i] = top_mem[4+i];
+			top_right[i] = top_mem[8+i];
 		}
 		break;
   case 13 :
@@ -1219,6 +1232,7 @@ static int VP8IteratorRotateI4(uint8_t y_left[16], uint8_t y_top_left, uint8_t y
 //#pragma HLS unroll
 			left[i] = blk[3+4*i];
 			top[i] = top_mem[8+i];
+			top_right[i] = top_mem[12+i];
 		}
 		break;
   case 14 :
@@ -1227,6 +1241,7 @@ static int VP8IteratorRotateI4(uint8_t y_left[16], uint8_t y_top_left, uint8_t y
 //#pragma HLS unroll
 			left[i] = blk[3+4*i];
 			top[i] = top_mem[12+i];
+			top_right[i] = y_top[16+i];
 		}
 		break;
   case 15 :

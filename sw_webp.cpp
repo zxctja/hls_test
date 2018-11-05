@@ -16261,9 +16261,10 @@ int VP8EncTokenLoop(VP8Encoder* const enc) {
 
     DATA data_it;
 	uint8_t * mem_in;
-	mem_in = (uint8_t*)WebPSafeMalloc(384 * enc->mb_w_ * enc->mb_h_, sizeof(*mem_in));
-	int x, y, i;
+	int x, y, i, j;
 	const WebPPicture* const pic = enc->pic_;
+	
+	mem_in = (uint8_t*)WebPSafeMalloc(384 * enc->mb_w_ * enc->mb_h_, sizeof(*mem_in));
 
 	for(y = 0; y < enc->mb_h_; y++){
 		for(x = 0; x < enc->mb_w_; x++){
@@ -16323,14 +16324,47 @@ int VP8EncTokenLoop(VP8Encoder* const enc) {
 	  	data_it.top_u, data_it.top_left_u, data_it.left_v, data_it.top_v, 
 	  	data_it.top_left_v, data_it.x, data_it.y, &info, data_it.top_derr, data_it.left_derr);
 
-	  it.mb_->type_ = data_it.mbtype == 1;
+	  if(data_it.mbtype == 1){
+		it.mb_->type_ = 1;
+		for(j = 0; j < 4; ++j){
+		  for(i = 0; i < 4; ++i){
+			it.preds_[i] = info.mode_i16;
+		  }
+		  it.preds_ += enc->preds_w_;
+		}
+	  }
+	  else{
+		it.mb_->type_ = 0;
+		for(j = 0; j < 4; ++j){
+		  for(i = 0; i < 4; ++i){
+			it.preds_[i] = info.modes_i4[j*4+i];
+		  }
+		  it.preds_ += enc->preds_w_;
+		}
+	  }
+	  it.mb_->uv_mode_ = info.mode_uv;
+	  
       ok = RecordTokens(&it, &info, &enc->tokens_);
-	  it.nz_ = ((data_it.x + 1) == data_it.mb_w) ? enc->nz_ :it.nz_ + 1;
-	  it.mb_ += 1;
+
+	  if((data_it.x + 1) == data_it.mb_w){
+	  	++it.y_;
+		it.bw_ = &enc->parts_[it.y_ & (enc->num_parts_ - 1)];
+		it.preds_ = enc->preds_ + it.y_ * 4 * enc->preds_w_;
+		it.nz_ = enc->nz_;
+		it.mb_ = enc->mb_info_ + it.y_ * enc->mb_w_;
+		it.left_nz_[8] = 0;
+	  }
+	  else{
+		it.nz_ = it.nz_ + 1;
+		it.mb_ += 1;
+		it.preds_ += 4;
+	  }
+	  
       if (!ok) {
         WebPEncodingSetError(enc->pic_, VP8_ENC_ERROR_OUT_OF_MEMORY);
         break;
       }
+	  
       distortion += info.D;
       //StoreSideInfo(&it);
 
