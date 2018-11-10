@@ -659,7 +659,10 @@ static int QuantizeSingle(int16_t* const v, const VP8Matrix* const mtx) {
   const int sign = (V < 0);
   if (sign) V = -V;
   if (V > (int)mtx->zthresh_[0]) {
-    const int qV = QUANTDIV(V, mtx->iq_[0], mtx->bias_[0]) * mtx->q_[0];
+  	const uint32_t n = V;
+    const uint32_t iQ = mtx->iq_[0];
+    const uint32_t B = mtx->bias_[0];
+    const int qV = QUANTDIV(n, iQ, B) * mtx->q_[0];
     const int err = (V - qV);
     *v = sign ? -qV : qV;
     return (sign ? -err : err) >> DSCALE;

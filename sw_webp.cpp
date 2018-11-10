@@ -3,7 +3,7 @@
 #include <string.h>
 #include <sys/time.h>
 #include <assert.h>
-#include <cstring>
+//#include <cstring>
 #include <jpeglib.h>
 #include <jerror.h>
 #include <setjmp.h>
@@ -16345,12 +16345,13 @@ int VP8EncTokenLoop(VP8Encoder* const enc) {
 		}
 	  }
 	  it.mb_->uv_mode_ = info.mode_uv;
+	  it.mb_->skip_ = data_it.is_skipped;
 	  
       ok = RecordTokens(&it, &info, &enc->tokens_);
 
 	  if((data_it.x + 1) == data_it.mb_w){
 	  	++it.y_;
-		it.bw_ = &enc->parts_[it.y_ & (enc->num_parts_ - 1)];
+		//it.bw_ = &enc->parts_[it.y_ & (enc->num_parts_ - 1)];
 		it.preds_ = enc->preds_ + it.y_ * 4 * enc->preds_w_;
 		it.nz_ = enc->nz_;
 		it.mb_ = enc->mb_info_ + it.y_ * enc->mb_w_;
@@ -16373,6 +16374,8 @@ int VP8EncTokenLoop(VP8Encoder* const enc) {
       VP8IteratorSaveBoundary_snap(&data_it);
 
     } while (ok && VP8IteratorNext_snap(&data_it));
+
+	enc->dqm_[0].max_edge_ = data_it.dqm.max_edge_;
 
     // compute and store PSNR
       stats.value = GetPSNR(distortion, pixel_count);
