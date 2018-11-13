@@ -26,32 +26,30 @@ static void DCMode(uint8_t* dst, uint8_t* left, uint8_t* top,
   if (x != 0) {
     if (y != 0) {
   	  for (j = 0; j < size; ++j){
-//#pragma HLS unroll
+#pragma HLS unroll
 	    DC += top[j] + left[j];
 	  }
-	  DC = (DC + round) >> shift;
-	  Fill(dst, DC, size);
     } else {
       for (j = 0; j < size; ++j){
-//#pragma HLS unroll
-		DC += left[j];
+#pragma HLS unroll
+		DC += left[j] << 1;
 	  }
-      DC = (DC + (round>>1)) >> (shift-1);
-	  Fill(dst, DC, size);
     }
   } else {
     if (y != 0) {
       for (j = 0; j < size; ++j){
-//#pragma HLS unroll
-		DC += top[j];
+#pragma HLS unroll
+		DC += top[j] << 1;
 	  }
-	  DC = (DC + (round>>1)) >> (shift-1);
-	  Fill(dst, DC, size);
     } else {
-      Fill(dst, 0x80, size);
+    	DC = 0x80 << 5;
     }
   }
+
+  DC = (DC + round) >> shift;
+  Fill(dst, DC, size);
 }
+
 
 static void VerticalPred(uint8_t* dst, uint8_t* top, int size) {
   int i,j;
