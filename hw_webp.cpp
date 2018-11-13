@@ -1264,7 +1264,6 @@ static int VP8GetCostLuma4(int16_t tmp_levels[16]){
 	return test_R << 10;
 }
 
-
 static int PickBestIntra4(VP8SegmentInfo* const dqm, uint8_t Yin[16*16], uint8_t Yout[16*16],
 		VP8ModeScore* const rd, uint8_t y_left[16], uint8_t y_top_left, uint8_t y_top[20]) {
 #pragma HLS ARRAY_PARTITION variable=Yout complete dim=1
@@ -1281,7 +1280,6 @@ static int PickBestIntra4(VP8SegmentInfo* const dqm, uint8_t Yin[16*16], uint8_t
   const int tlambda = dqm->tlambda_;
   const uint8_t* const src0 = Yin;
   uint8_t best_blocks[16][16];
-  VP8ModeScore rd_best;
   uint8_t left[4], top_left, top[4], top_right[4];
   int i, j, n;
   int i4_ = 0;
@@ -1296,7 +1294,6 @@ static int PickBestIntra4(VP8SegmentInfo* const dqm, uint8_t Yin[16*16], uint8_t
 
 #pragma HLS ARRAY_PARTITION variable=best_blocks complete dim=0
 #pragma HLS ARRAY_PARTITION variable=VP8Scan complete dim=1
-#pragma HLS ARRAY_PARTITION variable=rd_best.y_ac_levels complete dim=0
 #pragma HLS ARRAY_PARTITION variable=left complete dim=1
 #pragma HLS ARRAY_PARTITION variable=top complete dim=1
 #pragma HLS ARRAY_PARTITION variable=top_right complete dim=1
@@ -1327,13 +1324,10 @@ static int PickBestIntra4(VP8SegmentInfo* const dqm, uint8_t Yin[16*16], uint8_t
     }
   }
 
-
-  InitScore(&rd_best);
-  rd_best.H = 211;  // '211' is the value of VP8BitCost(0, 145)
-  SetRDScore(dqm->lambda_mode_, &rd_best);
+  rd->H = 211;  // '211' is the value of VP8BitCost(0, 145)
+  SetRDScore(dqm->lambda_mode_, rd);
 
   do {
-    const int kNumBlocks = 1;
     VP8ModeScore rd_i4;
     int mode;
     int best_mode = -1;
@@ -1369,19 +1363,15 @@ static int PickBestIntra4(VP8SegmentInfo* const dqm, uint8_t Yin[16*16], uint8_t
       if (rd_tmp.score < rd_i4.score) {
         CopyScore(&rd_i4, &rd_tmp);
         best_mode = mode;
-		copy_16_int16(rd_best.y_ac_levels[i4_], tmp_levels);
+		copy_16_int16(rd->y_ac_levels[i4_], tmp_levels);
 		copy_16_uint8(best_block, tmp_dst[mode]);
       }
     }
     SetRDScore(dqm->lambda_mode_, &rd_i4);
-    AddScore(&rd_best, &rd_i4);
+    AddScore(rd, &rd_i4);
     rd->modes_i4[i4_] = best_mode;
   } while (VP8IteratorRotateI4(y_left, y_top_left, 
   y_top, &i4_, top_mem, best_blocks, left, &top_left, top, top_right));
-
-  // finalize state
-  CopyScore(rd, &rd_best);
-  copy_16x16_int16(rd->y_ac_levels, rd_best.y_ac_levels);
 
   for(n = 0; n < 16; n++){
 #pragma HLS unroll
@@ -1396,7 +1386,6 @@ static int PickBestIntra4(VP8SegmentInfo* const dqm, uint8_t Yin[16*16], uint8_t
 
   return 1;   // select intra4x4 over intra16x16
 }
-
 
 static int SSE16x8_C(const uint8_t* a, const uint8_t* b) {
   return GetSSE(a, b, 16, 8);
