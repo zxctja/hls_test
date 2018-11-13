@@ -1092,16 +1092,18 @@ static void AddScore(VP8ModeScore* const dst, const VP8ModeScore* const src) {
   dst->score += src->score;
 }
 
-static int VP8IteratorRotateI4(uint8_t y_left[16], uint8_t y_top_left, uint8_t y_top[20], int* i4_, uint8_t top_mem[16],
-                        uint8_t yuv_out[16][16], uint8_t left[4], uint8_t* top_left, uint8_t top[4], uint8_t top_right[4]) {
-  const uint8_t* const blk = yuv_out[*i4_];
+static int VP8IteratorRotateI4(uint8_t y_left[16], uint8_t y_top_left,
+		uint8_t y_top[20], int i4_, uint8_t top_mem[16], uint8_t yuv_out[16][16],
+		uint8_t left[4], uint8_t* top_left, uint8_t top[4], uint8_t top_right[4]) {
+
+  const uint8_t* const blk = yuv_out[i4_];
   int i;
 
-  switch(*i4_){
+  switch(i4_){
   case 0 :
 		*top_left = y_top[3];
 		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
+#pragma HLS unroll
 			left[i] = blk[3+4*i];
 			top[i] = y_top[4+i];
 			top_right[i] = y_top[8+i];
@@ -1111,7 +1113,7 @@ static int VP8IteratorRotateI4(uint8_t y_left[16], uint8_t y_top_left, uint8_t y
   case 1 :
 		*top_left = y_top[7];
 		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
+#pragma HLS unroll
 			left[i] = blk[3+4*i];
 			top[i] = y_top[8+i];
 			top_right[i] = y_top[12+i];
@@ -1121,7 +1123,7 @@ static int VP8IteratorRotateI4(uint8_t y_left[16], uint8_t y_top_left, uint8_t y
   case 2 :
   		*top_left = y_top[11];
 		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
+#pragma HLS unroll
 			left[i] = blk[3+4*i];
 			top[i] = y_top[12+i];
 			top_right[i] = y_top[16+i];
@@ -1131,7 +1133,7 @@ static int VP8IteratorRotateI4(uint8_t y_left[16], uint8_t y_top_left, uint8_t y
   case 3 :
   		*top_left = y_left[3];
 		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
+#pragma HLS unroll
 			left[i] = y_left[4+i];
 			top[i] = top_mem[i];
 			top_right[i] = top_mem[4+i];
@@ -1141,7 +1143,7 @@ static int VP8IteratorRotateI4(uint8_t y_left[16], uint8_t y_top_left, uint8_t y
   case 4 :
 		*top_left = top_mem[3];
 		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
+#pragma HLS unroll
 			left[i] = blk[3+4*i];
 			top[i] = top_mem[4+i];
 			top_right[i] = top_mem[8+i];
@@ -1151,7 +1153,7 @@ static int VP8IteratorRotateI4(uint8_t y_left[16], uint8_t y_top_left, uint8_t y
   case 5 :
   		*top_left = top_mem[7];
 		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
+#pragma HLS unroll
 			left[i] = blk[3+4*i];
 			top[i] = top_mem[8+i];
 			top_right[i] = top_mem[12+i];
@@ -1161,7 +1163,7 @@ static int VP8IteratorRotateI4(uint8_t y_left[16], uint8_t y_top_left, uint8_t y
   case 6 :
   		*top_left = top_mem[11];
 		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
+#pragma HLS unroll
 			left[i] = blk[3+4*i];
 			top[i] = top_mem[12+i];
 			top_right[i] = y_top[16+i];
@@ -1171,7 +1173,7 @@ static int VP8IteratorRotateI4(uint8_t y_left[16], uint8_t y_top_left, uint8_t y
   case 7 :
   		*top_left = y_left[7];
 		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
+#pragma HLS unroll
 			left[i] = y_left[8+i];
 			top[i] = top_mem[i];
 			top_right[i] = top_mem[4+i];
@@ -1181,7 +1183,7 @@ static int VP8IteratorRotateI4(uint8_t y_left[16], uint8_t y_top_left, uint8_t y
   case 8 :
 		*top_left = top_mem[3];
 		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
+#pragma HLS unroll
 			left[i] = blk[3+4*i];
 			top[i] = top_mem[4+i];
 			top_right[i] = top_mem[8+i];
@@ -1191,7 +1193,7 @@ static int VP8IteratorRotateI4(uint8_t y_left[16], uint8_t y_top_left, uint8_t y
   case 9 :
   		*top_left = top_mem[7];
 		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
+#pragma HLS unroll
 			left[i] = blk[3+4*i];
 			top[i] = top_mem[8+i];
 			top_right[i] = top_mem[12+i];
@@ -1201,7 +1203,7 @@ static int VP8IteratorRotateI4(uint8_t y_left[16], uint8_t y_top_left, uint8_t y
   case 10 :
   		*top_left = top_mem[11];
 		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
+#pragma HLS unroll
 			left[i] = blk[3+4*i];
 			top[i] = top_mem[12+i];
 			top_right[i] = y_top[16+i];
@@ -1211,7 +1213,7 @@ static int VP8IteratorRotateI4(uint8_t y_left[16], uint8_t y_top_left, uint8_t y
   case 11 :
   		*top_left = y_left[11];
 		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
+#pragma HLS unroll
 			left[i] = y_left[12+i];
 			top[i] = top_mem[i];
 			top_right[i] = top_mem[4+i];
@@ -1221,7 +1223,7 @@ static int VP8IteratorRotateI4(uint8_t y_left[16], uint8_t y_top_left, uint8_t y
   case 12 :
 		*top_left = top_mem[3];
 		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
+#pragma HLS unroll
 			left[i] = blk[3+4*i];
 			top[i] = top_mem[4+i];
 			top_right[i] = top_mem[8+i];
@@ -1230,7 +1232,7 @@ static int VP8IteratorRotateI4(uint8_t y_left[16], uint8_t y_top_left, uint8_t y
   case 13 :
 		*top_left = top_mem[7];
 		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
+#pragma HLS unroll
 			left[i] = blk[3+4*i];
 			top[i] = top_mem[8+i];
 			top_right[i] = top_mem[12+i];
@@ -1239,18 +1241,15 @@ static int VP8IteratorRotateI4(uint8_t y_left[16], uint8_t y_top_left, uint8_t y
   case 14 :
 		*top_left = top_mem[11];
 		for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
+#pragma HLS unroll
 			left[i] = blk[3+4*i];
 			top[i] = top_mem[12+i];
 			top_right[i] = y_top[16+i];
 		}
 		break;
   case 15 :
-	  	return 0;
+	  	break;
   }
-  
-  // move pointers to next sub-block
-  ++(*i4_);
   
   return 1;
 }
@@ -1276,6 +1275,7 @@ static int PickBestIntra4(VP8SegmentInfo* const dqm, uint8_t Yin[16*16], uint8_t
 #pragma HLS ARRAY_PARTITION variable=dqm->y1_.q_ complete dim=1
 #pragma HLS ARRAY_PARTITION variable=y_left complete dim=1
 #pragma HLS ARRAY_PARTITION variable=y_top complete dim=1
+
   const int lambda = dqm->lambda_i4_;
   const int tlambda = dqm->tlambda_;
   const uint8_t* const src0 = Yin;
@@ -1327,12 +1327,11 @@ static int PickBestIntra4(VP8SegmentInfo* const dqm, uint8_t Yin[16*16], uint8_t
   rd->H = 211;  // '211' is the value of VP8BitCost(0, 145)
   SetRDScore(dqm->lambda_mode_, rd);
 
-  do {
+  for (i4_ = 0; i4_ < 16; ++i4_){
     VP8ModeScore rd_i4;
     int mode;
     int best_mode = -1;
     const uint16_t* const mode_costs = VP8FixedCostsI4;
-    uint8_t* best_block = best_blocks[i4_];
     uint8_t tmp_pred[10][16];    // scratch buffer.
 
 #pragma HLS ARRAY_PARTITION variable=VP8FixedCostsI4 complete dim=1
@@ -1364,14 +1363,15 @@ static int PickBestIntra4(VP8SegmentInfo* const dqm, uint8_t Yin[16*16], uint8_t
         CopyScore(&rd_i4, &rd_tmp);
         best_mode = mode;
 		copy_16_int16(rd->y_ac_levels[i4_], tmp_levels);
-		copy_16_uint8(best_block, tmp_dst[mode]);
+		copy_16_uint8(best_blocks[i4_], tmp_dst[mode]);
       }
     }
     SetRDScore(dqm->lambda_mode_, &rd_i4);
     AddScore(rd, &rd_i4);
     rd->modes_i4[i4_] = best_mode;
-  } while (VP8IteratorRotateI4(y_left, y_top_left, 
-  y_top, &i4_, top_mem, best_blocks, left, &top_left, top, top_right));
+    VP8IteratorRotateI4(y_left, y_top_left, y_top, i4_, top_mem,
+    		best_blocks, left, &top_left, top, top_right);
+  }
 
   for(n = 0; n < 16; n++){
 #pragma HLS unroll
