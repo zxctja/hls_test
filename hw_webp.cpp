@@ -4,40 +4,36 @@
 #include <math.h>
 #include "hw_webp.h"
 
-
-
-static void Fill(uint8_t* dst, int value, int size) {
-//#pragma HLS inline
+static void Fill_16(uint8_t* dst, int value) {
   int i,j;
-  for (j = 0; j < size; ++j) {
-//#pragma HLS unroll
-    for(i = 0; i < size; ++i){
-//#pragma HLS unroll
-        dst[j * size + i] = value;
+  for (j = 0; j < 16; ++j) {
+#pragma HLS unroll
+    for(i = 0; i < 16; ++i){
+#pragma HLS unroll
+        dst[j * 16 + i] = value;
     }
   }
 }
 
-static void DCMode(uint8_t* dst, uint8_t* left, uint8_t* top,
-                               int size, int round, int shift, int x, int y) {
+static void DCMode_16(uint8_t* dst, uint8_t* left, uint8_t* top, int x, int y) {
   int DC = 0;
   int j;
 
   if (x != 0) {
     if (y != 0) {
-  	  for (j = 0; j < size; ++j){
+  	  for (j = 0; j < 16; ++j){
 #pragma HLS unroll
 	    DC += top[j] + left[j];
 	  }
     } else {
-      for (j = 0; j < size; ++j){
+      for (j = 0; j < 16; ++j){
 #pragma HLS unroll
 		DC += left[j] << 1;
 	  }
     }
   } else {
     if (y != 0) {
-      for (j = 0; j < size; ++j){
+      for (j = 0; j < 16; ++j){
 #pragma HLS unroll
 		DC += top[j] << 1;
 	  }
@@ -46,48 +42,47 @@ static void DCMode(uint8_t* dst, uint8_t* left, uint8_t* top,
     }
   }
 
-  DC = (DC + round) >> shift;
-  Fill(dst, DC, size);
+  DC = (DC + 16) >> 5;
+  Fill_16(dst, DC);
 }
 
-
-static void VerticalPred(uint8_t* dst, uint8_t* top, int size) {
+static void VerticalPred_16(uint8_t* dst, uint8_t* top) {
   int i,j;
-    for (j = 0; j < size; ++j) {
-//#pragma HLS unroll
-    	for(i = 0; i < size; ++i){
-//#pragma HLS unroll
-    		dst[j * size + i] = top[i];
+    for (j = 0; j < 16; ++j) {
+#pragma HLS unroll
+    	for(i = 0; i < 16; ++i){
+#pragma HLS unroll
+    		dst[j * 16 + i] = top[i];
     	}
     }
 }
 
-static void HorizontalPred(uint8_t* dst, uint8_t* left, int size) {
+static void HorizontalPred_16(uint8_t* dst, uint8_t* left) {
     int i,j;
-    for (j = 0; j < size; ++j) {
-//#pragma HLS unroll
-    	for(i = 0; i < size; ++i){
-//#pragma HLS unroll
-    		dst[j * size + i] = left[j];
+    for (j = 0; j < 16; ++j) {
+#pragma HLS unroll
+    	for(i = 0; i < 16; ++i){
+#pragma HLS unroll
+    		dst[j * 16 + i] = left[j];
     	}
     }
 }
 
-static void TrueMotion(uint8_t* dst, uint8_t* left, uint8_t* top, uint8_t top_left, int size, int x, int y) {
+static void TrueMotion_16(uint8_t* dst, uint8_t* left, uint8_t* top, uint8_t top_left, int x, int y) {
   int i,j;
   int tmp;
   if (x != 0) {
     if (y != 0) {
-      for (j = 0; j < size; ++j) {
-//#pragma HLS unroll
-        for (i = 0; i < size; ++i) {
-//#pragma HLS unroll
+      for (j = 0; j < 16; ++j) {
+#pragma HLS unroll
+        for (i = 0; i < 16; ++i) {
+#pragma HLS unroll
         	tmp = top[i] + left[j] - top_left;
-        	dst[j * size + i] = (!(tmp & ~0xff)) ? (uint8_t)tmp : (tmp < 0) ? 0 : 255;
+        	dst[j * 16 + i] = (tmp>0xff) ? 0xff : (tmp<0) ? 0 : (uint8_t)tmp;
         }
       }
     } else {
-      HorizontalPred(dst, left, size);
+      HorizontalPred_16(dst, left);
     }
   } else {
     // true motion without left samples (hence: with default 129 value)
@@ -95,23 +90,126 @@ static void TrueMotion(uint8_t* dst, uint8_t* left, uint8_t* top, uint8_t top_le
     // Note that if top samples are not available, the default value is
     // then 129, and not 127 as in the VerticalPred case.
     if (y != 0) {
-      VerticalPred(dst, top, size);
+      VerticalPred_16(dst, top);
     } else {
-      Fill(dst, 129, size);
+      Fill_16(dst, 129);
+    }
+  }
+}
+
+static void Fill_8(uint8_t* dst, int value) {
+  int i,j;
+  for (j = 0; j < 8; ++j) {
+#pragma HLS unroll
+    for(i = 0; i < 8; ++i){
+#pragma HLS unroll
+        dst[j * 8 + i] = value;
+    }
+  }
+}
+
+static void Fill_4(uint8_t* dst, int value) {
+  int i,j;
+  for (j = 0; j < 4; ++j) {
+#pragma HLS unroll
+    for(i = 0; i < 4; ++i){
+#pragma HLS unroll
+        dst[j * 4 + i] = value;
+    }
+  }
+}
+
+static void DCMode_8(uint8_t* dst, uint8_t* left, uint8_t* top, int x, int y) {
+  int DC = 0;
+  int j;
+
+  if (x != 0) {
+    if (y != 0) {
+  	  for (j = 0; j < 8; ++j){
+#pragma HLS unroll
+	    DC += top[j] + left[j];
+	  }
+    } else {
+      for (j = 0; j < 8; ++j){
+#pragma HLS unroll
+		DC += left[j] << 1;
+	  }
+    }
+  } else {
+    if (y != 0) {
+      for (j = 0; j < 8; ++j){
+#pragma HLS unroll
+		DC += top[j] << 1;
+	  }
+    } else {
+    	DC = 0x80 << 4;
+    }
+  }
+
+  DC = (DC + 8) >> 4;
+  Fill_8(dst, DC);
+}
+
+static void VerticalPred_8(uint8_t* dst, uint8_t* top) {
+  int i,j;
+    for (j = 0; j < 8; ++j) {
+#pragma HLS unroll
+    	for(i = 0; i < 8; ++i){
+#pragma HLS unroll
+    		dst[j * 8 + i] = top[i];
+    	}
+    }
+}
+
+static void HorizontalPred_8(uint8_t* dst, uint8_t* left) {
+    int i,j;
+    for (j = 0; j < 8; ++j) {
+#pragma HLS unroll
+    	for(i = 0; i < 8; ++i){
+#pragma HLS unroll
+    		dst[j * 8 + i] = left[j];
+    	}
+    }
+}
+
+static void TrueMotion_8(uint8_t* dst, uint8_t* left, uint8_t* top, uint8_t top_left, int x, int y) {
+  int i,j;
+  int tmp;
+  if (x != 0) {
+    if (y != 0) {
+      for (j = 0; j < 8; ++j) {
+#pragma HLS unroll
+        for (i = 0; i < 8; ++i) {
+#pragma HLS unroll
+        	tmp = top[i] + left[j] - top_left;
+        	dst[j * 8 + i] = (tmp>0xff) ? 0xff : (tmp<0) ? 0 : (uint8_t)tmp;
+        }
+      }
+    } else {
+      HorizontalPred_8(dst, left);
+    }
+  } else {
+    // true motion without left samples (hence: with default 129 value)
+    // is equivalent to VE prediction where you just copy the top samples.
+    // Note that if top samples are not available, the default value is
+    // then 129, and not 127 as in the VerticalPred case.
+    if (y != 0) {
+      VerticalPred_8(dst, top);
+    } else {
+      Fill_8(dst, 129);
     }
   }
 }
 
 static void Intra16Preds_C(uint8_t YPred[4][16*16], uint8_t left_y[16],
-		uint8_t* top_y, uint8_t top_left_y, int x, int y) {
-////#pragma HLS PIPELINE
-//#pragma HLS ARRAY_PARTITION variable=top_y complete dim=1
-//#pragma HLS ARRAY_PARTITION variable=left_y complete dim=1
-//#pragma HLS ARRAY_PARTITION variable=YPred complete dim=0
-  DCMode(YPred[0], left_y, top_y, 16, 16, 5, x, y);
-  VerticalPred(YPred[2], top_y, 16);
-  HorizontalPred(YPred[3], left_y, 16);
-  TrueMotion(YPred[1], left_y, top_y, top_left_y, 16, x, y);
+		uint8_t top_y[20], uint8_t top_left_y, int x, int y) {
+#pragma HLS ARRAY_PARTITION variable=top_y complete dim=1
+#pragma HLS ARRAY_PARTITION variable=left_y complete dim=1
+#pragma HLS ARRAY_PARTITION variable=YPred complete dim=0
+  DCMode_16(YPred[0], left_y, top_y, x, y);
+  VerticalPred_16(YPred[2], top_y);
+  HorizontalPred_16(YPred[3], left_y);
+  TrueMotion_16(YPred[1], left_y, top_y, top_left_y, x, y);
 }
 
 static void IntraChromaPreds_C(
@@ -119,22 +217,21 @@ static void IntraChromaPreds_C(
         uint8_t left_u[8], uint8_t top_u[8], uint8_t top_left_u,
 		uint8_t left_v[8], uint8_t top_v[8], uint8_t top_left_v,
 		int x, int y) {
-////#pragma HLS PIPELINE
-//#pragma HLS ARRAY_PARTITION variable=top_u complete dim=1
-//#pragma HLS ARRAY_PARTITION variable=left_u complete dim=1
-//#pragma HLS ARRAY_PARTITION variable=top_v complete dim=1
-//#pragma HLS ARRAY_PARTITION variable=left_v complete dim=1
-//#pragma HLS ARRAY_PARTITION variable=UVPred complete dim=0
+#pragma HLS ARRAY_PARTITION variable=top_u complete dim=1
+#pragma HLS ARRAY_PARTITION variable=left_u complete dim=1
+#pragma HLS ARRAY_PARTITION variable=top_v complete dim=1
+#pragma HLS ARRAY_PARTITION variable=left_v complete dim=1
+#pragma HLS ARRAY_PARTITION variable=UVPred complete dim=0
   // U block
-  DCMode(UVPred[0], left_u, top_u, 8, 8, 4, x, y);
-  VerticalPred(UVPred[2], top_u, 8);
-  HorizontalPred(UVPred[3], left_u, 8);
-  TrueMotion(UVPred[1], left_u, top_u, top_left_u, 8, x, y);
+  DCMode_8(UVPred[0], left_u, top_u, x, y);
+  VerticalPred_8(UVPred[2], top_u);
+  HorizontalPred_8(UVPred[3], left_u);
+  TrueMotion_8(UVPred[1], left_u, top_u, top_left_u, x, y);
   // V block
-  DCMode(UVPred[4], left_v, top_v, 8, 8, 4, x, y);
-  VerticalPred(UVPred[6], top_v, 8);
-  HorizontalPred(UVPred[7], left_v, 8);
-  TrueMotion(UVPred[5], left_v, top_v, top_left_v, 8, x, y);
+  DCMode_8(UVPred[4], left_v, top_v, x, y);
+  VerticalPred_8(UVPred[6], top_v);
+  HorizontalPred_8(UVPred[7], left_v);
+  TrueMotion_8(UVPred[5], left_v, top_v, top_left_v, x, y);
 }
 
 // luma 4x4 prediction
@@ -176,11 +273,11 @@ static void DC4(uint8_t* dst, uint8_t* top, uint8_t* left) {
   uint32_t dc = 4;
   int i;
   for (i = 0; i < 4; ++i){
-//#pragma HLS unroll
+#pragma HLS unroll
 	  dc += top[i] + left[i];
   }
   dc = dc >> 3;
-  Fill(dst, dc, 4);
+  Fill_4(dst, dc);
 }
 
 static void RD4(uint8_t* dst, uint8_t* left, uint8_t top_left, uint8_t* top) {
