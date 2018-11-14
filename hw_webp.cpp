@@ -1263,8 +1263,85 @@ static int VP8GetCostLuma4(int16_t tmp_levels[16]){
 	return test_R << 10;
 }
 
+static int PickBestMode(VP8ModeScore rd_tmp[10]){
+    int best_mode_0;
+    int best_mode_1;
+    int best_mode_2;
+    int best_mode_3;
+    int best_mode_4;
+    int best_mode_5;
+    int best_mode_6;
+    int best_mode_7;
+    int best_mode_8;
+
+	if(rd_tmp[1].score < rd_tmp[0].score){
+		best_mode_0 = 1;
+	}
+	else{
+		best_mode_0 = 0;
+	}
+
+	if(rd_tmp[3].score < rd_tmp[2].score){
+		best_mode_1 = 3;
+	}
+	else{
+		best_mode_1 = 2;
+	}
+
+	if(rd_tmp[5].score < rd_tmp[4].score){
+		best_mode_2 = 5;
+	}
+	else{
+		best_mode_2 = 4;
+	}
+
+	if(rd_tmp[7].score < rd_tmp[6].score){
+		best_mode_3 = 7;
+	}
+	else{
+		best_mode_3 = 6;
+	}
+
+	if(rd_tmp[9].score < rd_tmp[8].score){
+		best_mode_4 = 9;
+	}
+	else{
+		best_mode_4 = 8;
+	}
+
+	if(rd_tmp[best_mode_1].score < rd_tmp[best_mode_0].score){
+		best_mode_5 = best_mode_1;
+	}
+	else{
+		best_mode_5 = best_mode_0;
+	}
+
+	if(rd_tmp[best_mode_3].score < rd_tmp[best_mode_2].score){
+		best_mode_6 = best_mode_3;
+	}
+	else{
+		best_mode_6 = best_mode_2;
+	}
+
+	if(rd_tmp[best_mode_6].score < rd_tmp[best_mode_5].score){
+		best_mode_7 = best_mode_6;
+	}
+	else{
+		best_mode_7 = best_mode_5;
+	}
+
+	if(rd_tmp[best_mode_4].score < rd_tmp[best_mode_7].score){
+		best_mode_8 = best_mode_4;
+	}
+	else{
+		best_mode_8 = best_mode_7;
+	}
+
+	return best_mode_8;
+}
+
 static int PickBestIntra4(VP8SegmentInfo* const dqm, uint8_t Yin[16*16], uint8_t Yout[16*16],
-			VP8ModeScore* const rd, uint8_t y_left[16], uint8_t y_top_left, uint8_t y_top[20]) {
+		VP8ModeScore* const rd, uint8_t y_left[16], uint8_t y_top_left, uint8_t y_top[20]) {
 #pragma HLS ARRAY_PARTITION variable=Yout complete dim=1
 #pragma HLS ARRAY_PARTITION variable=Yin complete dim=1
 #pragma HLS ARRAY_PARTITION variable=rd->y_ac_levels complete dim=0
@@ -1275,186 +1352,118 @@ static int PickBestIntra4(VP8SegmentInfo* const dqm, uint8_t Yin[16*16], uint8_t
 #pragma HLS ARRAY_PARTITION variable=dqm->y1_.q_ complete dim=1
 #pragma HLS ARRAY_PARTITION variable=y_left complete dim=1
 #pragma HLS ARRAY_PARTITION variable=y_top complete dim=1
-	
-	  const int lambda = dqm->lambda_i4_;
-	  const int tlambda = dqm->tlambda_;
-	  const uint8_t* const src0 = Yin;
-	  uint8_t best_blocks[16][16];
-	  uint8_t left[4], top_left, top[4], top_right[4];
-	  int i, j, n, i4_;
-	  uint8_t top_mem[16];
-	  uint8_t src[16][16];
-	  const uint16_t VP8Scan[16] = {  // Luma
-		0 +  0 * 16,  4 +  0 * 16, 8 +	0 * 16, 12 +  0 * 16,
-		0 +  4 * 16,  4 +  4 * 16, 8 +	4 * 16, 12 +  4 * 16,
-		0 +  8 * 16,  4 +  8 * 16, 8 +	8 * 16, 12 +  8 * 16,
-		0 + 12 * 16,  4 + 12 * 16, 8 + 12 * 16, 12 + 12 * 16,
-	  };
-	
+
+  const int lambda = dqm->lambda_i4_;
+  const int tlambda = dqm->tlambda_;
+  const uint8_t* const src0 = Yin;
+  uint8_t best_blocks[16][16];
+  uint8_t left[4], top_left, top[4], top_right[4];
+  int i, j, n, i4_;
+  uint8_t top_mem[16];
+  uint8_t src[16][16];
+  const uint16_t VP8Scan[16] = {  // Luma
+    0 +  0 * 16,  4 +  0 * 16, 8 +  0 * 16, 12 +  0 * 16,
+    0 +  4 * 16,  4 +  4 * 16, 8 +  4 * 16, 12 +  4 * 16,
+    0 +  8 * 16,  4 +  8 * 16, 8 +  8 * 16, 12 +  8 * 16,
+    0 + 12 * 16,  4 + 12 * 16, 8 + 12 * 16, 12 + 12 * 16,
+  };
+
 #pragma HLS ARRAY_PARTITION variable=best_blocks complete dim=0
 #pragma HLS ARRAY_PARTITION variable=VP8Scan complete dim=1
 #pragma HLS ARRAY_PARTITION variable=left complete dim=1
 #pragma HLS ARRAY_PARTITION variable=top complete dim=1
 #pragma HLS ARRAY_PARTITION variable=top_right complete dim=1
 #pragma HLS ARRAY_PARTITION variable=src complete dim=0
+#pragma HLS ARRAY_PARTITION variable=top_mem complete dim=1
+
+  top_left = y_top_left;
+  for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+	left[i] = y_left[i];
+  }
+  for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+	top[i] = y_top[i];
+  }
+  for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+	top_right[i] = y_top[4+i];
+  }
 	
-	  top_left = y_top_left;
-	  for (i = 0; i < 4; ++i) {
+  for(n = 0; n < 16; n++){
 #pragma HLS unroll
-		left[i] = y_left[i];
+    for(j = 0; j < 4; j++){
+#pragma HLS unroll
+	  for(i = 0; i < 4; i++){
+#pragma HLS unroll
+		  src[n][j * 4 + i] = src0[VP8Scan[n] + j * 16 + i];
 	  }
-	  for (i = 0; i < 4; ++i) {
-#pragma HLS unroll
-		top[i] = y_top[i];
-	  }
-	  for (i = 0; i < 4; ++i) {
-#pragma HLS unroll
-		top_right[i] = y_top[4+i];
-	  }
-		
-	  for(n = 0; n < 16; n++){
-#pragma HLS unroll
-		for(j = 0; j < 4; j++){
-#pragma HLS unroll
-		  for(i = 0; i < 4; i++){
-#pragma HLS unroll
-			  src[n][j * 4 + i] = src0[VP8Scan[n] + j * 16 + i];
-		  }
-		}
-	  }
-	
-	  rd->H = 211;	// '211' is the value of VP8BitCost(0, 145)
-	  SetRDScore(dqm->lambda_mode_, rd);
-	
-	  for (i4_ = 0; i4_ < 16; ++i4_){
-		VP8ModeScore rd_i4;
-		int mode;
-		int best_mode_0;
-		int best_mode_1;
-		int best_mode_2;
-		int best_mode_3;
-		int best_mode_4;
-		int best_mode_5;
-		int best_mode_6;
-		int best_mode_7;
-		int best_mode_8;
-		const uint16_t* const mode_costs = VP8FixedCostsI4;
-		uint8_t tmp_pred[10][16];	 // scratch buffer.
-		VP8ModeScore rd_tmp[10];
-		int16_t tmp_levels[10][16];
-		uint8_t tmp_dst[10][16];
-	
+    }
+  }
+
+  rd->H = 211;  // '211' is the value of VP8BitCost(0, 145)
+  SetRDScore(dqm->lambda_mode_, rd);
+
+  for (i4_ = 0; i4_ < 16; ++i4_){
+    VP8ModeScore rd_i4;
+    int mode;
+    int best_mode;
+    const uint16_t* const mode_costs = VP8FixedCostsI4;
+    uint8_t tmp_pred[10][16];    // scratch buffer.
+    VP8ModeScore rd_tmp[10];
+    int16_t tmp_levels[10][16];
+    uint8_t tmp_dst[10][16];
+
 #pragma HLS ARRAY_PARTITION variable=tmp_dst complete dim=0
 #pragma HLS ARRAY_PARTITION variable=tmp_levels complete dim=0
 #pragma HLS ARRAY_PARTITION variable=rd_tmp complete dim=1
 #pragma HLS ARRAY_PARTITION variable=VP8FixedCostsI4 complete dim=1
 #pragma HLS ARRAY_PARTITION variable=tmp_pred complete dim=0
-	
-		Intra4Preds_C(tmp_pred, left, top_left, top, top_right);
-	
-		for (mode = 0; mode < NUM_BMODES; ++mode) {
+
+    Intra4Preds_C(tmp_pred, left, top_left, top, top_right);
+
+    for (mode = 0; mode < NUM_BMODES; ++mode) {
 #pragma HLS unroll
-		  // Reconstruct
-		  rd_tmp[mode].nz =
-			  ReconstructIntra4(tmp_levels[mode], tmp_pred[mode], src[i4_], tmp_dst[mode], dqm->y1_) << i4_;
-	
-		  // Compute RD-score
-		  rd_tmp[mode].D = SSE4x4_C(src[i4_], tmp_dst[mode]);
-		  rd_tmp[mode].SD = MULT_8B(tlambda, Disto4x4_C(src[i4_], tmp_dst[mode], kWeightY));
-		  rd_tmp[mode].H = mode_costs[mode];
-		  rd_tmp[mode].R = VP8GetCostLuma4(tmp_levels[mode]);
-	
-		  SetRDScore(lambda, &rd_tmp[mode]);
-	
-		}
-	
-		if(rd_tmp[1].score < rd_tmp[0].score){
-			best_mode_0 = 1;
-		}
-		else{
-			best_mode_0 = 0;
-		}
-	
-		if(rd_tmp[3].score < rd_tmp[2].score){
-			best_mode_1 = 3;
-		}
-		else{
-			best_mode_1 = 2;
-		}
-	
-		if(rd_tmp[5].score < rd_tmp[4].score){
-			best_mode_2 = 5;
-		}
-		else{
-			best_mode_2 = 4;
-		}
-	
-		if(rd_tmp[7].score < rd_tmp[6].score){
-			best_mode_3 = 7;
-		}
-		else{
-			best_mode_3 = 6;
-		}
-	
-		if(rd_tmp[9].score < rd_tmp[8].score){
-			best_mode_4 = 9;
-		}
-		else{
-			best_mode_4 = 8;
-		}
-	
-		if(rd_tmp[best_mode_1].score < rd_tmp[best_mode_0].score){
-			best_mode_5 = best_mode_1;
-		}
-		else{
-			best_mode_5 = best_mode_0;
-		}
-	
-		if(rd_tmp[best_mode_3].score < rd_tmp[best_mode_2].score){
-			best_mode_6 = best_mode_3;
-		}
-		else{
-			best_mode_6 = best_mode_2;
-		}
-	
-		if(rd_tmp[best_mode_6].score < rd_tmp[best_mode_5].score){
-			best_mode_7 = best_mode_6;
-		}
-		else{
-			best_mode_7 = best_mode_5;
-		}
-	
-		if(rd_tmp[best_mode_4].score < rd_tmp[best_mode_7].score){
-			best_mode_8 = best_mode_4;
-		}
-		else{
-			best_mode_8 = best_mode_7;
-		}
-	
-		CopyScore(&rd_i4, &rd_tmp[best_mode_8]);
-		copy_16_int16(rd->y_ac_levels[i4_], tmp_levels[best_mode_8]);
-		copy_16_uint8(best_blocks[i4_], tmp_dst[best_mode_8]);
-	
-		SetRDScore(dqm->lambda_mode_, &rd_i4);
-		AddScore(rd, &rd_i4);
-		rd->modes_i4[i4_] = best_mode_8;
-		VP8IteratorRotateI4(y_left, y_top_left, y_top, i4_, top_mem,
-				best_blocks, left, &top_left, top, top_right);
-	  }
-	
-	  for(n = 0; n < 16; n++){
+      // Reconstruct
+      rd_tmp[mode].nz =
+          ReconstructIntra4(tmp_levels[mode], tmp_pred[mode], src[i4_], tmp_dst[mode], dqm->y1_) << i4_;
+
+      // Compute RD-score
+      rd_tmp[mode].D = SSE4x4_C(src[i4_], tmp_dst[mode]);
+      rd_tmp[mode].SD = MULT_8B(tlambda, Disto4x4_C(src[i4_], tmp_dst[mode], kWeightY));
+      rd_tmp[mode].H = mode_costs[mode];
+	  rd_tmp[mode].R = VP8GetCostLuma4(tmp_levels[mode]);
+
+      SetRDScore(lambda, &rd_tmp[mode]);
+
+    }
+
+    best_mode = PickBestMode(rd_tmp);
+
+    CopyScore(&rd_i4, &rd_tmp[best_mode]);
+	copy_16_int16(rd->y_ac_levels[i4_], tmp_levels[best_mode]);
+	copy_16_uint8(best_blocks[i4_], tmp_dst[best_mode]);
+
+    SetRDScore(dqm->lambda_mode_, &rd_i4);
+    AddScore(rd, &rd_i4);
+    rd->modes_i4[i4_] = best_mode;
+    VP8IteratorRotateI4(y_left, y_top_left, y_top, i4_, top_mem,
+    		best_blocks, left, &top_left, top, top_right);
+  }
+
+  for(n = 0; n < 16; n++){
 #pragma HLS unroll
-		  for(j = 0; j < 4; j++){
+	  for(j = 0; j < 4; j++){
 #pragma HLS unroll
-			  for(i = 0; i < 4; i++){
+		  for(i = 0; i < 4; i++){
 #pragma HLS unroll
-				  Yout[VP8Scan[n] + j * 16 + i] = best_blocks[n][j * 4 + i];
-			  }
+			  Yout[VP8Scan[n] + j * 16 + i] = best_blocks[n][j * 4 + i];
 		  }
 	  }
-	
-	  return 1;   // select intra4x4 over intra16x16
-	}
+  }
+
+  return 1;   // select intra4x4 over intra16x16
+}
 
 static int SSE16x8_C(const uint8_t* a, const uint8_t* b) {
   return GetSSE(a, b, 16, 8);
