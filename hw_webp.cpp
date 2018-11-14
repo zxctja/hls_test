@@ -886,15 +886,14 @@ static const uint16_t kWeightY[16] = {
 #define FLATNESS_LIMIT_I16 10      // I16 mode
 #define FLATNESS_PENALTY   140     // roughly ~1bit per block
 
-static int GetSSE(const uint8_t* a, const uint8_t* b,
-                              int w, int h) {
+static int GetSSE16x16(const uint8_t* a, const uint8_t* b) {
   int count = 0;
   int y, x;
-  for (y = 0; y < h; ++y) {
-//#pragma HLS unroll
-    for (x = 0; x < w; ++x) {
-//#pragma HLS unroll
-      const int diff = (int)a[x + y * w] - b[x + y * w];
+  for (y = 0; y < 16; ++y) {
+#pragma HLS unroll
+    for (x = 0; x < 16; ++x) {
+#pragma HLS unroll
+      const int diff = (int)a[x + y * 16] - b[x + y * 16];
       count += diff * diff;
     }
   }
@@ -902,8 +901,7 @@ static int GetSSE(const uint8_t* a, const uint8_t* b,
 }
 
 static int SSE16x16_C(const uint8_t* a, const uint8_t* b) {
-////#pragma HLS INLINE off
-  return GetSSE(a, b, 16, 16);
+  return GetSSE16x16(a, b);
 }
 
 #define MULT_8B(a, b) (((a) * (b) + 128) >> 8)
@@ -1176,8 +1174,22 @@ static void InitScore(VP8ModeScore* const rd) {
 const uint16_t VP8FixedCostsI4[NUM_BMODES] =
    {   40, 1151, 1723, 1874, 2103, 2019, 1628, 1777, 2226, 2137 };
 
+static int GetSSE4x4(const uint8_t* a, const uint8_t* b) {
+  int count = 0;
+  int y, x;
+  for (y = 0; y < 4; ++y) {
+#pragma HLS unroll
+    for (x = 0; x < 4; ++x) {
+#pragma HLS unroll
+      const int diff = (int)a[x + y * 4] - b[x + y * 4];
+      count += diff * diff;
+    }
+  }
+  return count;
+}
+
 static int SSE4x4_C(const uint8_t* a, const uint8_t* b) {
-  return GetSSE(a, b, 4, 4);
+  return GetSSE4x4(a, b);
 }
 
 static void AddScore(VP8ModeScore* const dst, const VP8ModeScore* const src) {
@@ -1561,8 +1573,22 @@ static int PickBestIntra4(VP8SegmentInfo* const dqm, uint8_t Yin[16*16], uint8_t
 	  return 1;   // select intra4x4 over intra16x16
 	}
 
+static int GetSSE16x8(const uint8_t* a, const uint8_t* b) {
+  int count = 0;
+  int y, x;
+  for (y = 0; y < 8; ++y) {
+#pragma HLS unroll
+    for (x = 0; x < 16; ++x) {
+#pragma HLS unroll
+      const int diff = (int)a[x + y * 16] - b[x + y * 16];
+      count += diff * diff;
+    }
+  }
+  return count;
+}
+
 static int SSE16x8_C(const uint8_t* a, const uint8_t* b) {
-  return GetSSE(a, b, 16, 8);
+  return GetSSE16x8(a, b);
 }
 
 const uint16_t VP8FixedCostsUV[4] = { 302, 984, 439, 642 };
