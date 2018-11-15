@@ -97,110 +97,6 @@ static void TrueMotion_16(uint8_t* dst, uint8_t* left, uint8_t* top, uint8_t top
   }
 }
 
-static void Fill_8(uint8_t* dst, int value) {
-  int i,j;
-  for (j = 0; j < 8; ++j) {
-#pragma HLS unroll
-    for(i = 0; i < 8; ++i){
-#pragma HLS unroll
-        dst[j * 8 + i] = value;
-    }
-  }
-}
-
-static void Fill_4(uint8_t* dst, int value) {
-  int i,j;
-  for (j = 0; j < 4; ++j) {
-#pragma HLS unroll
-    for(i = 0; i < 4; ++i){
-#pragma HLS unroll
-        dst[j * 4 + i] = value;
-    }
-  }
-}
-
-static void DCMode_8(uint8_t* dst, uint8_t* left, uint8_t* top, int x, int y) {
-  int DC = 0;
-  int j;
-
-  if (x != 0) {
-    if (y != 0) {
-  	  for (j = 0; j < 8; ++j){
-#pragma HLS unroll
-	    DC += top[j] + left[j];
-	  }
-    } else {
-      for (j = 0; j < 8; ++j){
-#pragma HLS unroll
-		DC += left[j] << 1;
-	  }
-    }
-  } else {
-    if (y != 0) {
-      for (j = 0; j < 8; ++j){
-#pragma HLS unroll
-		DC += top[j] << 1;
-	  }
-    } else {
-    	DC = 0x80 << 4;
-    }
-  }
-
-  DC = (DC + 8) >> 4;
-  Fill_8(dst, DC);
-}
-
-static void VerticalPred_8(uint8_t* dst, uint8_t* top) {
-  int i,j;
-    for (j = 0; j < 8; ++j) {
-#pragma HLS unroll
-    	for(i = 0; i < 8; ++i){
-#pragma HLS unroll
-    		dst[j * 8 + i] = top[i];
-    	}
-    }
-}
-
-static void HorizontalPred_8(uint8_t* dst, uint8_t* left) {
-    int i,j;
-    for (j = 0; j < 8; ++j) {
-#pragma HLS unroll
-    	for(i = 0; i < 8; ++i){
-#pragma HLS unroll
-    		dst[j * 8 + i] = left[j];
-    	}
-    }
-}
-
-static void TrueMotion_8(uint8_t* dst, uint8_t* left, uint8_t* top, uint8_t top_left, int x, int y) {
-  int i,j;
-  int tmp;
-  if (x != 0) {
-    if (y != 0) {
-      for (j = 0; j < 8; ++j) {
-#pragma HLS unroll
-        for (i = 0; i < 8; ++i) {
-#pragma HLS unroll
-        	tmp = top[i] + left[j] - top_left;
-        	dst[j * 8 + i] = (tmp>0xff) ? 0xff : (tmp<0) ? 0 : (uint8_t)tmp;
-        }
-      }
-    } else {
-      HorizontalPred_8(dst, left);
-    }
-  } else {
-    // true motion without left samples (hence: with default 129 value)
-    // is equivalent to VE prediction where you just copy the top samples.
-    // Note that if top samples are not available, the default value is
-    // then 129, and not 127 as in the VerticalPred case.
-    if (y != 0) {
-      VerticalPred_8(dst, top);
-    } else {
-      Fill_8(dst, 129);
-    }
-  }
-}
-
 static void Intra16Preds_C(uint8_t YPred[4][16*16], uint8_t left_y[16],
 		uint8_t top_y[20], uint8_t top_left_y, int x, int y) {
 #pragma HLS ARRAY_PARTITION variable=top_y complete dim=1
@@ -212,26 +108,128 @@ static void Intra16Preds_C(uint8_t YPred[4][16*16], uint8_t left_y[16],
   TrueMotion_16(YPred[1], left_y, top_y, top_left_y, x, y);
 }
 
+static void Fill_8(uint8_t* dst, int value_u, int value_v) {
+  int i,j;
+  for (j = 0; j < 8; ++j) {
+#pragma HLS unroll
+    for(i = 0; i < 8; ++i){
+#pragma HLS unroll
+        dst[j * 16 + i] = value_u;
+        dst[j * 16 + i + 8] = value_v;
+    }
+  }
+}
+
+static void DCMode_8(uint8_t* dst, uint8_t* left_u, uint8_t* top_u,
+		uint8_t* left_v, uint8_t* top_v, int x, int y) {
+  int DC_u = 0;
+  int DC_v = 0;
+  int j;
+
+  if (x != 0) {
+    if (y != 0) {
+  	  for (j = 0; j < 8; ++j){
+#pragma HLS unroll
+	    DC_u += top_u[j] + left_u[j];
+	    DC_v += top_v[j] + left_v[j];
+	  }
+    } else {
+      for (j = 0; j < 8; ++j){
+#pragma HLS unroll
+		DC_u += left_u[j] << 1;
+		DC_v += left_v[j] << 1;
+	  }
+    }
+  } else {
+    if (y != 0) {
+      for (j = 0; j < 8; ++j){
+#pragma HLS unroll
+		DC_u += top_u[j] << 1;
+		DC_v += top_v[j] << 1;
+	  }
+    } else {
+    	DC_u = 0x80 << 4;
+    	DC_v = 0x80 << 4;
+    }
+  }
+
+  DC_u = (DC_u + 8) >> 4;
+  DC_v = (DC_v + 8) >> 4;
+  Fill_8(dst, DC_u, DC_v);
+}
+
+static void VerticalPred_8(uint8_t* dst, uint8_t* top_u, uint8_t* top_v) {
+  int i,j;
+    for (j = 0; j < 8; ++j) {
+#pragma HLS unroll
+    	for(i = 0; i < 8; ++i){
+#pragma HLS unroll
+    		dst[j * 16 + i] = top_u[i];
+    		dst[j * 16 + i + 8] = top_v[i];
+    	}
+    }
+}
+
+static void HorizontalPred_8(uint8_t* dst, uint8_t* left_u, uint8_t* left_v) {
+    int i,j;
+    for (j = 0; j < 8; ++j) {
+#pragma HLS unroll
+    	for(i = 0; i < 8; ++i){
+#pragma HLS unroll
+    		dst[j * 16 + i] = left_u[j];
+    		dst[j * 16 + i + 8] = left_v[j];
+    	}
+    }
+}
+
+static void TrueMotion_8(uint8_t* dst, uint8_t* left_u, uint8_t* top_u, uint8_t top_left_u,
+		uint8_t* left_v, uint8_t* top_v, uint8_t top_left_v, int x, int y) {
+  int i,j;
+  int tmp_u;
+  int tmp_v;
+  if (x != 0) {
+    if (y != 0) {
+      for (j = 0; j < 8; ++j) {
+#pragma HLS unroll
+        for (i = 0; i < 8; ++i) {
+#pragma HLS unroll
+        	tmp_u = top_u[i] + left_u[j] - top_left_u;
+        	tmp_v = top_v[i] + left_v[j] - top_left_v;
+        	dst[j * 16 + i] = (tmp_u>0xff) ? 0xff : (tmp_u<0) ? 0 : (uint8_t)tmp_u;
+        	dst[j * 16 + i + 8] = (tmp_v>0xff) ? 0xff : (tmp_v<0) ? 0 : (uint8_t)tmp_v;
+        }
+      }
+    } else {
+      HorizontalPred_8(dst, left_u, left_v);
+    }
+  } else {
+    // true motion without left samples (hence: with default 129 value)
+    // is equivalent to VE prediction where you just copy the top samples.
+    // Note that if top samples are not available, the default value is
+    // then 129, and not 127 as in the VerticalPred case.
+    if (y != 0) {
+      VerticalPred_8(dst, top_u, top_v);
+    } else {
+      Fill_8(dst, 129, 129);
+    }
+  }
+}
+
 static void IntraChromaPreds_C(
-		uint8_t UVPred[8][8*8],
+		uint8_t UVPred[4][8*16],
         uint8_t left_u[8], uint8_t top_u[8], uint8_t top_left_u,
 		uint8_t left_v[8], uint8_t top_v[8], uint8_t top_left_v,
 		int x, int y) {
-#pragma HLS ARRAY_PARTITION variable=top_u complete dim=1
-#pragma HLS ARRAY_PARTITION variable=left_u complete dim=1
-#pragma HLS ARRAY_PARTITION variable=top_v complete dim=1
-#pragma HLS ARRAY_PARTITION variable=left_v complete dim=1
-#pragma HLS ARRAY_PARTITION variable=UVPred complete dim=0
-  // U block
-  DCMode_8(UVPred[0], left_u, top_u, x, y);
-  VerticalPred_8(UVPred[2], top_u);
-  HorizontalPred_8(UVPred[3], left_u);
-  TrueMotion_8(UVPred[1], left_u, top_u, top_left_u, x, y);
-  // V block
-  DCMode_8(UVPred[4], left_v, top_v, x, y);
-  VerticalPred_8(UVPred[6], top_v);
-  HorizontalPred_8(UVPred[7], left_v);
-  TrueMotion_8(UVPred[5], left_v, top_v, top_left_v, x, y);
+// #pragma HLS ARRAY_PARTITION variable=top_u complete dim=1
+// #pragma HLS ARRAY_PARTITION variable=left_u complete dim=1
+// #pragma HLS ARRAY_PARTITION variable=top_v complete dim=1
+// #pragma HLS ARRAY_PARTITION variable=left_v complete dim=1
+// #pragma HLS ARRAY_PARTITION variable=UVPred complete dim=2
+  // U V block
+  DCMode_8(UVPred[0], left_u, top_u, left_v, top_v, x, y);
+  VerticalPred_8(UVPred[2], top_u, top_v);
+  HorizontalPred_8(UVPred[3], left_u, left_v);
+  TrueMotion_8(UVPred[1], left_u, top_u, top_left_u, left_v, top_v, top_left_v, x, y);
 }
 
 // luma 4x4 prediction
@@ -239,6 +237,17 @@ static void IntraChromaPreds_C(
 #define DST(x, y) dst[(x) + (y) * 4]
 #define AVG3(a, b, c) ((uint8_t)(((a) + 2 * (b) + (c) + 2) >> 2))
 #define AVG2(a, b) (((a) + (b) + 1) >> 1)
+
+static void Fill_4(uint8_t* dst, int value) {
+  int i,j;
+  for (j = 0; j < 4; ++j) {
+#pragma HLS unroll
+    for(i = 0; i < 4; ++i){
+#pragma HLS unroll
+        dst[j * 4 + i] = value;
+    }
+  }
+}
 
 static void VE4(uint8_t* dst, uint8_t top_left, uint8_t* top, uint8_t* top_right) {    // vertical
   uint8_t vals[4] = {
@@ -1649,55 +1658,35 @@ static void CopyUVout(uint8_t dst[8*16], uint8_t src[8*16]) {
   }
 }
 
-static void PickBestUV(VP8SegmentInfo* const dqm, uint8_t UVin[8*16], uint8_t UVPred[8][8*8],
+static void PickBestUV(VP8SegmentInfo* const dqm, uint8_t UVin[8*16], uint8_t UVPred[4][8*16],
 		uint8_t UVout[8*16], VP8ModeScore* const rd, int x, DError top_derr[1024], DError left_derr) {
-#pragma HLS ARRAY_PARTITION variable=UVout complete dim=1
-#pragma HLS ARRAY_PARTITION variable=UVin complete dim=1
-#pragma HLS ARRAY_PARTITION variable=UVPred complete dim=0
-#pragma HLS ARRAY_PARTITION variable=rd->uv_levels complete dim=0
-#pragma HLS ARRAY_PARTITION variable=dqm->uv_.sharpen_ complete dim=1
-#pragma HLS ARRAY_PARTITION variable=dqm->uv_.zthresh_ complete dim=1
-#pragma HLS ARRAY_PARTITION variable=dqm->uv_.bias_ complete dim=1
-#pragma HLS ARRAY_PARTITION variable=dqm->uv_.iq_ complete dim=1
-#pragma HLS ARRAY_PARTITION variable=dqm->uv_.q_ complete dim=1
-#pragma HLS ARRAY_PARTITION variable=top_derr complete dim=2
-#pragma HLS ARRAY_PARTITION variable=top_derr complete dim=3
-#pragma HLS ARRAY_PARTITION variable=left_derr complete dim=0
-  const int kNumBlocks = 8;
+// #pragma HLS ARRAY_PARTITION variable=UVout complete dim=1
+// #pragma HLS ARRAY_PARTITION variable=UVin complete dim=1
+// #pragma HLS ARRAY_PARTITION variable=UVPred complete dim=2
+// #pragma HLS ARRAY_PARTITION variable=rd->uv_levels complete dim=0
+// #pragma HLS ARRAY_PARTITION variable=dqm->uv_.sharpen_ complete dim=1
+// #pragma HLS ARRAY_PARTITION variable=dqm->uv_.zthresh_ complete dim=1
+// #pragma HLS ARRAY_PARTITION variable=dqm->uv_.bias_ complete dim=1
+// #pragma HLS ARRAY_PARTITION variable=dqm->uv_.iq_ complete dim=1
+// #pragma HLS ARRAY_PARTITION variable=dqm->uv_.q_ complete dim=1
+// #pragma HLS ARRAY_PARTITION variable=top_derr complete dim=2
+// #pragma HLS ARRAY_PARTITION variable=top_derr complete dim=3
+// #pragma HLS ARRAY_PARTITION variable=left_derr complete dim=0
+
   const int lambda = dqm->lambda_uv_;
   const uint8_t* const src = UVin;
   uint8_t tmp_dst[8*16];  // scratch buffer
   uint8_t* dst = UVout;
-  uint8_t tmp_p[4][8*16];
   int mode;
   int i, j, k;
 #pragma HLS ARRAY_PARTITION variable=tmp_dst complete dim=1
-#pragma HLS ARRAY_PARTITION variable=tmp_p complete dim=0
-
-  for (i = 0; i < 4; ++i) {
-#pragma HLS unroll
-	for (j = 0; j < 128; j = j + 16) {
-#pragma HLS unroll
-		for (k = 0; k < 8; ++k) {
-#pragma HLS unroll
-			tmp_p[i][j+k] = UVPred[i][(j>>1)+k];
-		}
-	}
-	for (j = 8; j < 128; j = j + 16) {
-#pragma HLS unroll
-		for (k = 0; k < 8; ++k) {
-#pragma HLS unroll
-			tmp_p[i][j+k] = UVPred[i+4][((j-8)>>1)+k];
-		}
-	}
-  }
 
   for (mode = 0; mode < NUM_PRED_MODES; ++mode) {
     VP8ModeScore rd_uv;
 #pragma HLS ARRAY_PARTITION variable=rd_uv.uv_levels complete dim=0
 #pragma HLS ARRAY_PARTITION variable=rd_uv.derr complete dim=0
     // Reconstruct
-    rd_uv.nz = ReconstructUV(rd_uv.uv_levels, tmp_p[mode], src, tmp_dst,
+    rd_uv.nz = ReconstructUV(rd_uv.uv_levels, UVPred[mode], src, tmp_dst,
     		dqm->uv_, top_derr, left_derr, x, rd_uv.derr);
 
     // Compute RD-score
@@ -1728,7 +1717,7 @@ void VP8Decimate_snap(uint8_t Yin[16*16], uint8_t Yout16[16*16], uint8_t Yout4[1
 		int x, int y, VP8ModeScore* const rd, DError top_derr[1024], DError left_derr) {
 
   uint8_t YPred[4][16*16];
-  uint8_t UVPred[8][8*8];
+  uint8_t UVPred[4][8*16];
   VP8ModeScore rd_i16;
   VP8ModeScore rd_i4;
   VP8ModeScore rd_uv;
@@ -1738,21 +1727,22 @@ void VP8Decimate_snap(uint8_t Yin[16*16], uint8_t Yout16[16*16], uint8_t Yout4[1
 #pragma HLS ARRAY_PARTITION variable=rd_i4.modes_i4 complete dim=1
 #pragma HLS ARRAY_PARTITION variable=rd_uv.uv_levels complete dim=0
 #pragma HLS ARRAY_PARTITION variable=rd_uv.derr complete dim=0
-#pragma HLS ARRAY_PARTITION variable=UVPred complete dim=0
-#pragma HLS ARRAY_PARTITION variable=YPred complete dim=0
+#pragma HLS ARRAY_PARTITION variable=YPred complete dim=2
+#pragma HLS ARRAY_PARTITION variable=Yout16 complete dim=1
+#pragma HLS ARRAY_PARTITION variable=Yout4 complete dim=1
+#pragma HLS ARRAY_PARTITION variable=Yin complete dim=1
+#pragma HLS ARRAY_PARTITION variable=UVPred complete dim=2
 #pragma HLS ARRAY_PARTITION variable=UVout complete dim=1
 #pragma HLS ARRAY_PARTITION variable=UVin complete dim=1
 #pragma HLS ARRAY_PARTITION variable=rd->uv_levels complete dim=0
+#pragma HLS ARRAY_PARTITION variable=rd->y_ac_levels complete dim=0
+#pragma HLS ARRAY_PARTITION variable=rd->y_dc_levels complete dim=1
+#pragma HLS ARRAY_PARTITION variable=rd->modes_i4 complete dim=1
 #pragma HLS ARRAY_PARTITION variable=dqm->uv_.sharpen_ complete dim=1
 #pragma HLS ARRAY_PARTITION variable=dqm->uv_.zthresh_ complete dim=1
 #pragma HLS ARRAY_PARTITION variable=dqm->uv_.bias_ complete dim=1
 #pragma HLS ARRAY_PARTITION variable=dqm->uv_.iq_ complete dim=1
 #pragma HLS ARRAY_PARTITION variable=dqm->uv_.q_ complete dim=1
-#pragma HLS ARRAY_PARTITION variable=Yout16 complete dim=1
-#pragma HLS ARRAY_PARTITION variable=Yout4 complete dim=1
-#pragma HLS ARRAY_PARTITION variable=Yin complete dim=1
-#pragma HLS ARRAY_PARTITION variable=rd->y_ac_levels complete dim=0
-#pragma HLS ARRAY_PARTITION variable=rd->y_dc_levels complete dim=1
 #pragma HLS ARRAY_PARTITION variable=dqm->y1_.sharpen_ complete dim=1
 #pragma HLS ARRAY_PARTITION variable=dqm->y1_.zthresh_ complete dim=1
 #pragma HLS ARRAY_PARTITION variable=dqm->y1_.bias_ complete dim=1
@@ -1769,6 +1759,9 @@ void VP8Decimate_snap(uint8_t Yin[16*16], uint8_t Yout16[16*16], uint8_t Yout4[1
 #pragma HLS ARRAY_PARTITION variable=top_u complete dim=1
 #pragma HLS ARRAY_PARTITION variable=left_v complete dim=1
 #pragma HLS ARRAY_PARTITION variable=top_v complete dim=1
+#pragma HLS ARRAY_PARTITION variable=top_derr complete dim=2
+#pragma HLS ARRAY_PARTITION variable=top_derr complete dim=3
+#pragma HLS ARRAY_PARTITION variable=left_derr complete dim=0
 
   InitScore(&rd_i16);
   InitScore(&rd_i4);
