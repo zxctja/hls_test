@@ -444,12 +444,12 @@ static void Intra4Preds_C(
 static void FTransform_C(const uint8_t* src, const uint8_t* ref, int16_t* out) {
   int i;
   int tmp[16];
-  for (i = 0; i < 4; ++i, src += 4, ref += 4) {
-//#pragma HLS unroll
-    const int d0 = src[0] - ref[0];   // 9bit dynamic range ([-255,255])
-    const int d1 = src[1] - ref[1];
-    const int d2 = src[2] - ref[2];
-    const int d3 = src[3] - ref[3];
+  for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+    const int d0 = src[4 * i + 0] - ref[4 * i + 0];   // 9bit dynamic range ([-255,255])
+    const int d1 = src[4 * i + 1] - ref[4 * i + 1];
+    const int d2 = src[4 * i + 2] - ref[4 * i + 2];
+    const int d3 = src[4 * i + 3] - ref[4 * i + 3];
     const int a0 = (d0 + d3);         // 10b                      [-510,510]
     const int a1 = (d1 + d2);
     const int a2 = (d1 - d2);
@@ -460,7 +460,7 @@ static void FTransform_C(const uint8_t* src, const uint8_t* ref, int16_t* out) {
     tmp[3 + i * 4] = (a3 * 2217 - a2 * 5352 +  937) >> 9;
   }
   for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
+#pragma HLS unroll
     const int a0 = (tmp[0 + i] + tmp[12 + i]);  // 15b
     const int a1 = (tmp[4 + i] + tmp[ 8 + i]);
     const int a2 = (tmp[4 + i] - tmp[ 8 + i]);
