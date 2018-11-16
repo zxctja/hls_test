@@ -546,13 +546,11 @@ static int QuantizeBlock_C(int16_t* in, int16_t* out,
   return (last >= 0);
 }
 
-
-
 static void TransformWHT_C(const int16_t* in, int16_t* out) {
   int tmp[16];
   int i;
   for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
+#pragma HLS unroll
     const int a0 = in[0 + i] + in[12 + i];
     const int a1 = in[4 + i] + in[ 8 + i];
     const int a2 = in[4 + i] - in[ 8 + i];
@@ -563,17 +561,16 @@ static void TransformWHT_C(const int16_t* in, int16_t* out) {
     tmp[12 + i] = a3 - a2;
   }
   for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
+#pragma HLS unroll
     const int dc = tmp[0 + i * 4] + 3;    // w/ rounder
     const int a0 = dc             + tmp[3 + i * 4];
     const int a1 = tmp[1 + i * 4] + tmp[2 + i * 4];
     const int a2 = tmp[1 + i * 4] - tmp[2 + i * 4];
     const int a3 = dc             - tmp[3 + i * 4];
-    out[0] = (a0 + a1) >> 3;
-    out[1] = (a3 + a2) >> 3;
-    out[2] = (a0 - a1) >> 3;
-    out[3] = (a3 - a2) >> 3;
-    out += 4;
+    out[4 * i + 0] = (a0 + a1) >> 3;
+    out[4 * i + 1] = (a3 + a2) >> 3;
+    out[4 * i + 2] = (a0 - a1) >> 3;
+    out[4 * i + 3] = (a3 - a2) >> 3;
   }
 }
 
