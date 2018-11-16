@@ -1641,7 +1641,7 @@ static void CopyUVout(uint8_t dst[8*16], uint8_t src[8*16]) {
 	  dst[j] = src[j];
   }
 }
-/*
+
 static void PickBestUV(VP8SegmentInfo* const dqm, uint8_t UVin[8*16], uint8_t UVout[8*16],
 		VP8ModeScore* const rd, DError top_derr[1024], DError left_derr, uint8_t left_u[8],
 		uint8_t top_u[8], uint8_t top_left_u, uint8_t left_v[8], uint8_t top_v[8],
@@ -1714,7 +1714,7 @@ static void PickBestUV(VP8SegmentInfo* const dqm, uint8_t UVin[8*16], uint8_t UV
   // store diffusion errors for next block
   StoreDiffusionErrors(top_derr, left_derr, x, rd);
 }
-*/
+/*
 static int PickBestMode_8(VP8ModeScore rd_tmp[4]){
 
     int best_mode_0;
@@ -1822,7 +1822,7 @@ static void PickBestUV(VP8SegmentInfo* const dqm, uint8_t UVin[8*16], uint8_t UV
   // store diffusion errors for next block
   StoreDiffusionErrors(top_derr, left_derr, x, rd);
 }
-
+*/
 void VP8Decimate_snap(uint8_t Yin[16*16], uint8_t Yout16[16*16], uint8_t Yout4[16*16],
 		VP8SegmentInfo* const dqm, uint8_t UVin[8*16], uint8_t UVout[8*16], uint8_t* is_skipped,
 		uint8_t left_y[16], uint8_t top_y[20], uint8_t top_left_y, uint8_t* mbtype, uint8_t left_u[8], 
