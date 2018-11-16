@@ -580,7 +580,7 @@ static void TransformWHT_C(const int16_t* in, int16_t* out) {
 typedef int16_t fixed_t;
 
 uint8_t clip_8b(fixed_t v) {
-  return (!(v & ~0xff)) ? v : (v < 0) ? 0 : 255;
+  return (v>0xff) ? 0xff : (v<0) ? 0 : (uint8_t)v;
 }
 
 #define STORE(x, y, v) \
@@ -592,39 +592,33 @@ static const int kC2 = 35468;
 
 static void ITransformOne(const uint8_t* ref, const int16_t* in,
                                       uint8_t* dst) {
-  int C[4 * 4], *tmp;
+  int tmp[4 * 4];
   int i;
-  tmp = C;
   for (i = 0; i < 4; ++i) {    // vertical pass
-//#pragma HLS unroll
-    const int a = in[0] + in[8];
-    const int b = in[0] - in[8];
-    const int c = MUL(in[4], kC2) - MUL(in[12], kC1);
-    const int d = MUL(in[4], kC1) + MUL(in[12], kC2);
-    tmp[0] = a + d;
-    tmp[1] = b + c;
-    tmp[2] = b - c;
-    tmp[3] = a - d;
-    tmp += 4;
-    in++;
+#pragma HLS unroll
+    const int a = in[i + 0] + in[i + 8];
+    const int b = in[i + 0] - in[i + 8];
+    const int c = MUL(in[i + 4], kC2) - MUL(in[i + 12], kC1);
+    const int d = MUL(in[i + 4], kC1) + MUL(in[i + 12], kC2);
+    tmp[4 * i + 0] = a + d;
+    tmp[4 * i + 1] = b + c;
+    tmp[4 * i + 2] = b - c;
+    tmp[4 * i + 3] = a - d;
   }
 
-  tmp = C;
   for (i = 0; i < 4; ++i) {    // horizontal pass
-//#pragma HLS unroll
-    const int dc = tmp[0] + 4;
-    const int a =  dc +  tmp[8];
-    const int b =  dc -  tmp[8];
-    const int c = MUL(tmp[4], kC2) - MUL(tmp[12], kC1);
-    const int d = MUL(tmp[4], kC1) + MUL(tmp[12], kC2);
+#pragma HLS unroll
+    const int dc = tmp[i + 0] + 4;
+    const int a =  dc +  tmp[i + 8];
+    const int b =  dc -  tmp[i + 8];
+    const int c = MUL(tmp[i + 4], kC2) - MUL(tmp[i + 12], kC1);
+    const int d = MUL(tmp[i + 4], kC1) + MUL(tmp[i + 12], kC2);
     STORE(0, i, a + d);
     STORE(1, i, b + c);
     STORE(2, i, b - c);
     STORE(3, i, a - d);
-    tmp++;
   }
 }
-
 
 static int ReconstructIntra16(
 		const uint8_t YPred[16*16], const uint8_t Ysrc[16*16], uint8_t Yout[16*16],
