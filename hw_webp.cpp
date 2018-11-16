@@ -476,19 +476,19 @@ static void FTransformWHT_C(const int16_t* in, int16_t* out) {
   // input is 12b signed
   int32_t tmp[16];
   int i;
-  for (i = 0; i < 4; ++i, in += 4) {
-//#pragma HLS unroll
-    const int a0 = (in[0] + in[2]);  // 13b
-    const int a1 = (in[1] + in[3]);
-    const int a2 = (in[1] - in[3]);
-    const int a3 = (in[0] - in[2]);
+  for (i = 0; i < 4; ++i) {
+#pragma HLS unroll
+    const int a0 = (in[4 * i + 0] + in[4 * i + 2]);  // 13b
+    const int a1 = (in[4 * i + 1] + in[4 * i + 3]);
+    const int a2 = (in[4 * i + 1] - in[4 * i + 3]);
+    const int a3 = (in[4 * i + 0] - in[4 * i + 2]);
     tmp[0 + i * 4] = a0 + a1;   // 14b
     tmp[1 + i * 4] = a3 + a2;
     tmp[2 + i * 4] = a3 - a2;
     tmp[3 + i * 4] = a0 - a1;
   }
   for (i = 0; i < 4; ++i) {
-//#pragma HLS unroll
+#pragma HLS unroll
     const int a0 = (tmp[0 + i] + tmp[8 + i]);  // 15b
     const int a1 = (tmp[4 + i] + tmp[12+ i]);
     const int a2 = (tmp[4 + i] - tmp[12+ i]);
