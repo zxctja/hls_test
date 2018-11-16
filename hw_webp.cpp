@@ -1646,6 +1646,7 @@ static void PickBestUV(VP8SegmentInfo* const dqm, uint8_t UVin[8*16], uint8_t UV
 		VP8ModeScore* const rd, DError top_derr[1024], DError left_derr, uint8_t left_u[8],
 		uint8_t top_u[8], uint8_t top_left_u, uint8_t left_v[8], uint8_t top_v[8],
 		uint8_t top_left_v, int x, int y) {
+//#pragma HLS pipeline
 //#pragma HLS ARRAY_PARTITION variable=UVout complete dim=1
 //#pragma HLS ARRAY_PARTITION variable=UVin complete dim=1
 //#pragma HLS ARRAY_PARTITION variable=rd->uv_levels complete dim=0
@@ -1685,10 +1686,11 @@ static void PickBestUV(VP8SegmentInfo* const dqm, uint8_t UVin[8*16], uint8_t UV
 	}
   }
 
-  for (mode = 0; mode < NUM_PRED_MODES; ++mode) {
-    VP8ModeScore rd_uv;
+  VP8ModeScore rd_uv;
 #pragma HLS ARRAY_PARTITION variable=rd_uv.uv_levels complete dim=0
 #pragma HLS ARRAY_PARTITION variable=rd_uv.derr complete dim=0
+
+  for (mode = 0; mode < NUM_PRED_MODES; ++mode) {
     // Reconstruct
     rd_uv.nz = ReconstructUV(rd_uv.uv_levels, UVPred[mode], src, tmp_dst,
     		dqm->uv_, top_derr, left_derr, x, rd_uv.derr);
@@ -1705,13 +1707,13 @@ static void PickBestUV(VP8SegmentInfo* const dqm, uint8_t UVin[8*16], uint8_t UV
       CopyScore(rd, &rd_uv);
       rd->mode_uv = mode;
 	  CopyUVLevel(rd->uv_levels, rd_uv.uv_levels);
-	  CopyUVderr(rd->derr, rd_uv.derr);
+	  //CopyUVderr(rd->derr, rd_uv.derr);
 	  CopyUVout(dst, tmp_dst);
     }
   }
 
   // store diffusion errors for next block
-  StoreDiffusionErrors(top_derr, left_derr, x, rd);
+  StoreDiffusionErrors(top_derr, left_derr, x, &rd_uv);
 }
 
 void VP8Decimate_snap(uint8_t Yin[16*16], uint8_t Yout16[16*16], uint8_t Yout4[16*16],
