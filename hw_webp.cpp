@@ -1537,7 +1537,7 @@ static void PickBestIntra4(VP8SegmentInfo* const dqm, uint8_t Yin[16*16], uint8_
       SetRDScore(lambda, &rd_tmp[mode]);
     }
 
-    best_mode = PickBestMode_4(rd_tmp);
+    best_mode = PickBestMode(rd_tmp);
 
     CopyScore(&rd_i4, &rd_tmp[best_mode]);
 	Copy_16_int16(rd->y_ac_levels[i4_], tmp_levels[best_mode]);
