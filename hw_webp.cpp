@@ -897,23 +897,24 @@ static int GetSSE16x16(const uint8_t* a, const uint8_t* b) {
 #define MULT_8B(a, b) (((a) * (b) + 128) >> 8)
 
 static int TTransform(const uint8_t* in, const uint16_t* w) {
+#pragma HLS inline
   int sum = 0;
   int tmp[16];
   int i;
   // horizontal pass
-  for (i = 0; i < 4; ++i, in += 4) {
+  for (i = 0; i < 4; ++i) {
 #pragma HLS unroll
-    const int a0 = in[0] + in[2];
-    const int a1 = in[1] + in[3];
-    const int a2 = in[1] - in[3];
-    const int a3 = in[0] - in[2];
+    const int a0 = in[4 * i + 0] + in[4 * i + 2];
+    const int a1 = in[4 * i + 1] + in[4 * i + 3];
+    const int a2 = in[4 * i + 1] - in[4 * i + 3];
+    const int a3 = in[4 * i + 0] - in[4 * i + 2];
     tmp[0 + i * 4] = a0 + a1;
     tmp[1 + i * 4] = a3 + a2;
     tmp[2 + i * 4] = a3 - a2;
     tmp[3 + i * 4] = a0 - a1;
   }
   // vertical pass
-  for (i = 0; i < 4; ++i, ++w) {
+  for (i = 0; i < 4; ++i) {
 #pragma HLS unroll
     const int a0 = tmp[0 + i] + tmp[8 + i];
     const int a1 = tmp[4 + i] + tmp[12+ i];
@@ -924,10 +925,10 @@ static int TTransform(const uint8_t* in, const uint16_t* w) {
     const int b2 = a3 - a2;
     const int b3 = a0 - a1;
 
-    sum += w[ 0] * abs(b0);
-    sum += w[ 4] * abs(b1);
-    sum += w[ 8] * abs(b2);
-    sum += w[12] * abs(b3);
+    sum += w[i +  0] * abs(b0);
+    sum += w[i +  4] * abs(b1);
+    sum += w[i +  8] * abs(b2);
+    sum += w[i + 12] * abs(b3);
   }
   return sum;
 }
