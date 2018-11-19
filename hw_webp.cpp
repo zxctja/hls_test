@@ -1460,7 +1460,6 @@ static void PickBestIntra4(VP8SegmentInfo* const dqm, uint8_t Yin[16*16], uint8_
 
   const int lambda = dqm->lambda_i4_;
   const int tlambda = dqm->tlambda_;
-  const uint8_t* const src0 = Yin;
   uint8_t best_blocks[16][16];
   uint8_t left[4], top_left, top[4], top_right[4];
   int i, j, n, i4_;
@@ -1495,7 +1494,7 @@ static void PickBestIntra4(VP8SegmentInfo* const dqm, uint8_t Yin[16*16], uint8_
 #pragma HLS unroll
 	  for(i = 0; i < 4; i++){
 #pragma HLS unroll
-		  src[n][j * 4 + i] = src0[VP8Scan[n] + j * 16 + i];
+		  src[n][j * 4 + i] = Yin[VP8Scan[n] + j * 16 + i];
 	  }
     }
   }
