@@ -1445,18 +1445,6 @@ static int PickBestMode(VP8ModeScore rd_tmp[10]){
 	return best_mode_8;
 }
 
-static void VP8MatrixLoad(VP8Matrix* dst, VP8Matrix* src){
-	int i;
-	for(i=0;i<16;i++){
-#pragma HLS unroll
-		dst->q_[i]			= src->q_[i]		;
-		dst->iq_[i]			= src->iq_[i]		;
-		dst->bias_[i]		= src->bias_[i]		;
-		dst->zthresh_[i]	= src->zthresh_[i]	;
-		dst->sharpen_[i]	= src->sharpen_[i]	;
-	}
-}
-
 static void PickBestIntra4(VP8SegmentInfo* const dqm, uint8_t Yin[16*16], uint8_t Yout[16*16],
 		VP8ModeScore* const rd, uint8_t y_left[16], uint8_t y_top_left, uint8_t y_top[20]) {
 //#pragma HLS pipeline
@@ -1473,7 +1461,6 @@ static void PickBestIntra4(VP8SegmentInfo* const dqm, uint8_t Yin[16*16], uint8_
 
   const int lambda = dqm->lambda_i4_;
   const int tlambda = dqm->tlambda_;
-  VP8Matrix y1;
   uint8_t best_blocks[16][16];
   uint8_t left[4], top_left, top[4], top_right[4];
   int i, j, n, i4_;
@@ -1498,8 +1485,6 @@ static void PickBestIntra4(VP8SegmentInfo* const dqm, uint8_t Yin[16*16], uint8_
 #pragma HLS ARRAY_PARTITION variable=y1.bias_ complete dim=1
 #pragma HLS ARRAY_PARTITION variable=y1.iq_ complete dim=1
 #pragma HLS ARRAY_PARTITION variable=y1.q_ complete dim=1
-
-  VP8MatrixLoad(&y1, &dqm->y1_);
 
   top_left = y_top_left;
   for (i = 0; i < 4; ++i) {
@@ -1546,7 +1531,7 @@ static void PickBestIntra4(VP8SegmentInfo* const dqm, uint8_t Yin[16*16], uint8_
 #pragma HLS unroll
       // Reconstruct
       rd_tmp[mode].nz =
-          ReconstructIntra4(tmp_levels[mode], tmp_pred[mode], src[i4_], tmp_dst[mode], y1) << i4_;
+          ReconstructIntra4(tmp_levels[mode], tmp_pred[mode], src[i4_], tmp_dst[mode], dqm->y1_) << i4_;
 
       // Compute RD-score
       rd_tmp[mode].D = GetSSE4x4(src[i4_], tmp_dst[mode]);
