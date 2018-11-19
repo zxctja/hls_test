@@ -762,7 +762,7 @@ static int QuantizeSingle(int16_t* const v, const VP8Matrix* const mtx) {
   }
 }
 
-static void CorrectDCValues(DError top_derr[1024], DError left_derr, int x,
+static void CorrectDCValues(DError top_derr[1024], DError left_derr, int x, int y,
                             const VP8Matrix* const mtx,
                             int16_t tmp[][16], int8_t derr[2][3]) {
   //         | top[0] | top[1]
@@ -772,10 +772,21 @@ static void CorrectDCValues(DError top_derr[1024], DError left_derr, int x,
   //
   // Final errors {err1,err2,err3} are preserved and later restored
   // as top[]/left[] on the next block.
+
+  int8_t top_tmp[2][2];
+  int i, j;
+  for (j = 0; j < 2; ++j) {
+#pragma HLS unroll
+	  for (i = 0; i < 2; ++i) {
+#pragma HLS unroll
+		  top_tmp[j][i] = y ? top_derr[x][j][i] : 0;
+	  }
+  }
+
   int ch;
   for (ch = 0; ch <= 1; ++ch) {
 #pragma HLS unroll
-    const int8_t* const top = top_derr[x][ch];
+    const int8_t* const top = top_tmp[ch];
     const int8_t* const left = left_derr[ch];
     int16_t (* const c)[16] = &tmp[ch * 4];
     int err0, err1, err2, err3;
@@ -800,7 +811,7 @@ static void CorrectDCValues(DError top_derr[1024], DError left_derr, int x,
 
 static int ReconstructUV(int16_t uv_levels[8][16],const uint8_t uv_p[8*16],
 		const uint8_t uv_src[8*16], uint8_t uv_out[8*16], VP8Matrix uv,
-		DError top_derr[1024], DError left_derr, int x, int8_t derr[2][3]) {
+		DError top_derr[1024], DError left_derr, int x, int y, int8_t derr[2][3]) {
 // #pragma HLS ARRAY_PARTITION variable=uv.sharpen_ complete dim=1
 // #pragma HLS ARRAY_PARTITION variable=uv.zthresh_ complete dim=1
 // #pragma HLS ARRAY_PARTITION variable=uv.bias_ complete dim=1
@@ -846,8 +857,7 @@ static int ReconstructUV(int16_t uv_levels[8][16],const uint8_t uv_p[8*16],
 	  FTransform_C(tmp_src[n], tmp_p[n], tmp[n]);
   }
 
-  CorrectDCValues(top_derr, left_derr, x, &uv, tmp, derr);
-
+  CorrectDCValues(top_derr, left_derr, x, y, &uv, tmp, derr);
 
   for (n = 0; n < 8; n++) {
 #pragma HLS unroll
@@ -1692,7 +1702,7 @@ static void PickBestUV(VP8SegmentInfo* const dqm, uint8_t UVin[8*16], uint8_t UV
 #pragma HLS ARRAY_PARTITION variable=rd_uv.derr complete dim=0
     // Reconstruct
     rd_uv.nz = ReconstructUV(rd_uv.uv_levels, UVPred[mode], src, tmp_dst,
-    		dqm->uv_, top_derr, left_derr, x, rd_uv.derr);
+    		dqm->uv_, top_derr, left_derr, x, y, rd_uv.derr);
 
     // Compute RD-score
     rd_uv.D  = GetSSE16x8(src, tmp_dst);
