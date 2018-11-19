@@ -16302,7 +16302,7 @@ int VP8EncTokenLoop(VP8Encoder* const enc) {
 	memset(data_it.left_u, 129, 8);
 	memset(data_it.left_v, 129, 8);
 	memcpy(&data_it.dqm, &enc->dqm_[0], sizeof(data_it.dqm));
-	memset(data_it.top_derr, 0, sizeof(data_it.top_derr));
+	//memset(data_it.top_derr, 0, sizeof(data_it.top_derr));
 	memset(data_it.left_derr, 0, sizeof(data_it.left_derr));
 	data_it.mb_w = enc->mb_w_;
 	data_it.mb_h = enc->mb_h_;
