@@ -855,30 +855,21 @@ static int ReconstructUV(int16_t uv_levels[8][16], uint8_t uv_p[8*16],
 	  }
   }
 
-  for (n = 0; n < 2; n++) {
+  for (n = 0; n < 8; n++) {
 #pragma HLS unroll
-	  FTransform_C(tmp_src[4 * n + 0], tmp_p[4 * n + 0], tmp[4 * n + 0]);
-	  FTransform_C(tmp_src[4 * n + 1], tmp_p[4 * n + 1], tmp[4 * n + 1]);
-	  FTransform_C(tmp_src[4 * n + 2], tmp_p[4 * n + 2], tmp[4 * n + 2]);
-	  FTransform_C(tmp_src[4 * n + 3], tmp_p[4 * n + 3], tmp[4 * n + 3]);
+	  FTransform_C(tmp_src[n], tmp_p[n], tmp[n]);
   }
 
   CorrectDCValues(top_derr, left_derr, x, y, &uv, tmp, derr);
 
-  for (n = 0; n < 2; n++) {
+  for (n = 0; n < 8; n++) {
 #pragma HLS unroll
-    nz |= QuantizeBlock_C(tmp[4 * n + 0], uv_levels[4 * n + 0], &uv) << 4 * n + 0;
-	nz |= QuantizeBlock_C(tmp[4 * n + 1], uv_levels[4 * n + 1], &uv) << 4 * n + 1;
-	nz |= QuantizeBlock_C(tmp[4 * n + 2], uv_levels[4 * n + 2], &uv) << 4 * n + 2;
-	nz |= QuantizeBlock_C(tmp[4 * n + 3], uv_levels[4 * n + 3], &uv) << 4 * n + 3;
+    nz |= QuantizeBlock_C(tmp[n], uv_levels[n], &uv) << n;
   }
 
-  for (n = 0; n < 2; n++) {
+  for (n = 0; n < 8; n++) {
 #pragma HLS unroll
-	  ITransformOne(tmp_p[4 * n + 0], tmp[4 * n + 0], tmp_out[4 * n + 0]);
-	  ITransformOne(tmp_p[4 * n + 1], tmp[4 * n + 1], tmp_out[4 * n + 1]);
-	  ITransformOne(tmp_p[4 * n + 2], tmp[4 * n + 2], tmp_out[4 * n + 2]);
-	  ITransformOne(tmp_p[4 * n + 3], tmp[4 * n + 3], tmp_out[4 * n + 3]);
+	  ITransformOne(tmp_p[n], tmp[n], tmp_out[n]);
   }
 
   for(n = 0; n < 8; n++){
