@@ -1511,7 +1511,7 @@ static void PickBestIntra4(VP8SegmentInfo* const dqm, uint8_t Yin[16*16], uint8_
   }
 
   rd->H = 211;  // '211' is the value of VP8BitCost(0, 145)
-  SetRDScore(dqm->lambda_mode_, rd);
+  rd->score = rd->H * dqm->lambda_mode_;
 
   VP8ModeScore rd_i4;
   int mode;
@@ -1768,10 +1768,6 @@ void VP8Decimate_snap(uint8_t Yin[16*16], uint8_t Yout16[16*16], uint8_t Yout4[1
 #pragma HLS ARRAY_PARTITION variable=rd_i4.modes_i4 complete dim=1
 #pragma HLS ARRAY_PARTITION variable=rd_uv.uv_levels complete dim=0
 #pragma HLS ARRAY_PARTITION variable=rd_uv.derr complete dim=0
-
-  InitScore(&rd_i16);
-  InitScore(&rd_i4);
-  InitScore(&rd_uv);
 
   // We can perform predictions for Luma16x16 and Chroma8x8 already.
   // Luma4x4 predictions needs to be done as-we-go.
