@@ -1704,12 +1704,19 @@ static void PickBestUV(VP8SegmentInfo* const dqm, uint8_t UVin[8*16], uint8_t UV
 //#pragma HLS ARRAY_PARTITION variable=left_v complete dim=1
 
   const int lambda = dqm->lambda_uv_;
-  uint8_t tmp_dst[8*16];  // scratch buffer
   int mode;
+  int best_mode;
   int i, j, k;
-  uint8_t UVPred[4][8*16];
+  uint8_t UVPred[NUM_PRED_MODES][8*16];
+  uint8_t tmp_dst[NUM_PRED_MODES][8*16];  // scratch buffer
+  VP8ModeScore rd_uv[NUM_PRED_MODES];
+  int16_t tmp_uv_levels[NUM_PRED_MODES][4 + 4][16];
+  int8_t tmp_derr[NUM_PRED_MODES][2][3];
 
-#pragma HLS ARRAY_PARTITION variable=tmp_dst complete dim=1
+#pragma HLS ARRAY_PARTITION variable=rd_uv complete dim=1
+#pragma HLS ARRAY_PARTITION variable=tmp_uv_levels complete dim=0
+#pragma HLS ARRAY_PARTITION variable=tmp_derr complete dim=0
+#pragma HLS ARRAY_PARTITION variable=tmp_dst complete dim=0
 #pragma HLS ARRAY_PARTITION variable=UVPred complete dim=0
 
   IntraChromaPreds_C(UVPred, left_u, top_u, top_left_u, left_v, top_v, top_left_v, x,  y);
@@ -1725,29 +1732,26 @@ static void PickBestUV(VP8SegmentInfo* const dqm, uint8_t UVin[8*16], uint8_t UV
   }
 
   for (mode = 0; mode < NUM_PRED_MODES; mode++) {
-    VP8ModeScore rd_uv;
-#pragma HLS ARRAY_PARTITION variable=rd_uv.uv_levels complete dim=0
-#pragma HLS ARRAY_PARTITION variable=rd_uv.derr complete dim=0
     // Reconstruct
-    rd_uv.nz = ReconstructUV(rd_uv.uv_levels, UVPred[mode], UVin, tmp_dst,
-    		dqm->uv_, top_derr, left_derr, x, y, rd_uv.derr);
+    rd_uv[mode].nz = ReconstructUV(tmp_uv_levels[mode], UVPred[mode], UVin, tmp_dst[mode],
+    		dqm->uv_, top_derr, left_derr, x, y, tmp_derr[mode]);
 
     // Compute RD-score
-    rd_uv.D  = GetSSE16x8(UVin, tmp_dst);
-    rd_uv.SD = 0;    // not calling TDisto here: it tends to flatten areas.
-    rd_uv.H  = VP8FixedCostsUV[mode];
-	rd_uv.R  = VP8GetCostUV(rd_uv.uv_levels);
+    rd_uv[mode].D  = GetSSE16x8(UVin, tmp_dst[mode]);
+    rd_uv[mode].SD = 0;    // not calling TDisto here: it tends to flatten areas.
+    rd_uv[mode].H  = VP8FixedCostsUV[mode];
+	rd_uv[mode].R  = VP8GetCostUV(tmp_uv_levels[mode]);
 
-    SetRDScore(lambda, &rd_uv);
-
-    if (rd_uv.score < rd->score) {
-      CopyScore(rd, &rd_uv);
-      rd->mode_uv = mode;
-	  CopyUVLevel(rd->uv_levels, rd_uv.uv_levels);
-	  CopyUVderr(rd->derr, rd_uv.derr);
-	  CopyUVout(UVout, tmp_dst);
-    }
+    SetRDScore(lambda, &rd_uv[mode]);
   }
+
+  best_mode = PickBestModeYUV(rd_uv);
+
+  CopyScore(rd, &rd_uv[best_mode]);
+  rd->mode_uv = best_mode;
+  CopyUVLevel(rd->uv_levels, tmp_uv_levels[best_mode]);
+  CopyUVderr(rd->derr, tmp_derr[best_mode]);
+  CopyUVout(UVout, tmp_dst[best_mode]);
 
   // store diffusion errors for next block
   StoreDiffusionErrors(top_derr, left_derr, x, rd);
