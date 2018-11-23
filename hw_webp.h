@@ -1,6 +1,6 @@
 #include <stdint.h>
 
-typedef int32_t score_t;     // type used for scores, rate, distortion
+typedef int64_t score_t;     // type used for scores, rate, distortion
 
 typedef struct VP8Matrix {
   uint16_t q_[16];        // quantizer steps
