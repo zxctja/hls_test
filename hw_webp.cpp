@@ -1550,10 +1550,10 @@ static void PickBestIntra4(VP8SegmentInfo* const dqm, uint8_t Yin[16*16], uint8_
   VP8ModeScore rd_i4;
   int mode;
   int best_mode;
-  uint8_t tmp_pred[10][16];    // scratch buffer.
-  VP8ModeScore rd_tmp[10];
-  int16_t tmp_levels[10][16];
-  uint8_t tmp_dst[10][16];
+  uint8_t tmp_pred[NUM_BMODES][16];    // scratch buffer.
+  VP8ModeScore rd_tmp[NUM_BMODES];
+  int16_t tmp_levels[NUM_BMODES][16];
+  uint8_t tmp_dst[NUM_BMODES][16];
 
 #pragma HLS ARRAY_PARTITION variable=tmp_dst complete dim=0
 #pragma HLS ARRAY_PARTITION variable=tmp_levels complete dim=0
