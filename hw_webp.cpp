@@ -1096,6 +1096,36 @@ static void Copy_16_uint8(uint8_t dst[16], uint8_t src[16]){
 	}
 }
 
+static int PickBestModeYUV(VP8ModeScore rd_tmp[NUM_PRED_MODES]){
+
+    int best_mode_0;
+    int best_mode_1;
+    int best_mode_2;
+
+	if(rd_tmp[1].score < rd_tmp[0].score){
+		best_mode_0 = 1;
+	}
+	else{
+		best_mode_0 = 0;
+	}
+
+	if(rd_tmp[3].score < rd_tmp[2].score){
+		best_mode_1 = 3;
+	}
+	else{
+		best_mode_1 = 2;
+	}
+
+	if(rd_tmp[best_mode_1].score < rd_tmp[best_mode_0].score){
+		best_mode_2 = best_mode_1;
+	}
+	else{
+		best_mode_2 = best_mode_0;
+	}
+
+	return best_mode_2;
+}
+
 static void PickBestIntra16(uint8_t Yin[16*16], uint8_t Yout[16*16],
 		VP8ModeScore* rd, VP8SegmentInfo* const dqm, uint8_t left_y[16],
 		uint8_t top_y[20], uint8_t top_left_y, int x, int y) {
@@ -1118,14 +1148,18 @@ static void PickBestIntra16(uint8_t Yin[16*16], uint8_t Yout[16*16],
 
   const int lambda = dqm->lambda_i16_;
   const int tlambda = dqm->tlambda_;
-  VP8ModeScore rd_tmp;
+  VP8ModeScore rd_tmp[NUM_PRED_MODES];
   int mode;
-  uint8_t Yout_tmp[16*16];
-  uint8_t YPred[4][16*16];
+  int best_mode;
+  uint8_t Yout_tmp[NUM_PRED_MODES][16*16];
+  uint8_t YPred[NUM_PRED_MODES][16*16];
+  int16_t tmp_ac_levels[NUM_PRED_MODES][16][16];
+  int16_t tmp_dc_levels[NUM_PRED_MODES][16];
 
-#pragma HLS ARRAY_PARTITION variable=rd_tmp.y_ac_levels complete dim=0
-#pragma HLS ARRAY_PARTITION variable=rd_tmp.y_dc_levels complete dim=1
-#pragma HLS ARRAY_PARTITION variable=Yout_tmp complete dim=1
+#pragma HLS ARRAY_PARTITION variable=tmp_ac_levels complete dim=0
+#pragma HLS ARRAY_PARTITION variable=tmp_dc_levels complete dim=0
+#pragma HLS ARRAY_PARTITION variable=rd_tmp complete dim=1
+#pragma HLS ARRAY_PARTITION variable=Yout_tmp complete dim=0
 #pragma HLS ARRAY_PARTITION variable=YPred complete dim=0
 #pragma HLS ARRAY_PARTITION variable=VP8FixedCostsI16 complete dim=1
 
@@ -1133,26 +1167,26 @@ static void PickBestIntra16(uint8_t Yin[16*16], uint8_t Yout[16*16],
 
   for (mode = 0; mode < NUM_PRED_MODES; ++mode) {
     // Reconstruct
-	rd_tmp.nz = ReconstructIntra16(YPred[mode], Yin, Yout_tmp, rd_tmp.y_ac_levels,
-    		rd_tmp.y_dc_levels, dqm->y1_, dqm->y2_);
+	rd_tmp[mode].nz = ReconstructIntra16(YPred[mode], Yin, Yout_tmp[mode], tmp_ac_levels[mode],
+			tmp_dc_levels[mode], dqm->y1_, dqm->y2_);
 
     // Measure RD-score
-	rd_tmp.D = GetSSE16x16(Yin, Yout_tmp);
-	rd_tmp.SD = MULT_8B(tlambda, Disto16x16_C(Yin, Yout_tmp, kWeightY));
-	rd_tmp.H = VP8FixedCostsI16[mode];
-	rd_tmp.R = VP8GetCostLuma16(&rd_tmp);
+	rd_tmp[mode].D = GetSSE16x16(Yin, Yout_tmp[mode]);
+	rd_tmp[mode].SD = MULT_8B(tlambda, Disto16x16_C(Yin, Yout_tmp[mode], kWeightY));
+	rd_tmp[mode].H = VP8FixedCostsI16[mode];
+	rd_tmp[mode].R = VP8GetCostLuma16(tmp_ac_levels[mode], tmp_dc_levels[mode]);
 
     // Since we always examine Intra16 first, we can overwrite *rd directly.
-    SetRDScore(lambda, &rd_tmp);
-
-    if (rd_tmp.score < rd->score) {
-      rd->mode_i16 = mode;
-      CopyScore(rd, &rd_tmp);
-	  Copy_16x16_int16(rd->y_ac_levels, rd_tmp.y_ac_levels);
-	  Copy_16_int16(rd->y_dc_levels, rd_tmp.y_dc_levels);
-	  Copy_256_uint8(Yout, Yout_tmp);
-    }
+    SetRDScore(lambda, &rd_tmp[mode]);
   }
+
+  best_mode = PickBestModeYUV(rd_tmp);
+
+  rd->mode_i16 = best_mode;
+  CopyScore(rd, &rd_tmp[best_mode]);
+  Copy_16x16_int16(rd->y_ac_levels, tmp_ac_levels[best_mode]);
+  Copy_16_int16(rd->y_dc_levels, tmp_dc_levels[best_mode]);
+  Copy_256_uint8(Yout, Yout_tmp[best_mode]);
 
   SetRDScore(dqm->lambda_mode_, rd);   // finalize score for mode decision.
 
