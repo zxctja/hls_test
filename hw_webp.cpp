@@ -1046,7 +1046,7 @@ static void CopyScore(VP8ModeScore* const dst, const VP8ModeScore* const src) {
   dst->score = src->score;
 }
 
-static int VP8GetCostLuma16(VP8ModeScore* rd_cur){
+static int VP8GetCostLuma16(int16_t y_ac_levels[16][16], int16_t y_dc_levels[16]){
 #pragma HLS inline off
 	int64_t test_R = 0;
 	int y, x;
@@ -1054,9 +1054,9 @@ static int VP8GetCostLuma16(VP8ModeScore* rd_cur){
 //#pragma HLS unroll
 	  for (x = 0; x < 16; ++x) {
 #pragma HLS unroll
-	    test_R += rd_cur->y_ac_levels[y][x] * rd_cur->y_ac_levels[y][x];
+	    test_R += y_ac_levels[y][x] * y_ac_levels[y][x];
 	  }
-	  test_R += rd_cur->y_dc_levels[y] * rd_cur->y_dc_levels[y];
+	  test_R += y_dc_levels[y] * y_dc_levels[y];
 	}
 	return test_R << 10;
 }
