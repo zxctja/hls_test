@@ -1166,6 +1166,15 @@ static void PickBestIntra16(uint8_t Yin[16*16], uint8_t Yout[16*16],
 
 #define MAX_COST ((score_t)0x7fffffffffffffLL)
 
+static void InitScore(VP8ModeScore* const rd) {
+  rd->D  = 0;
+  rd->SD = 0;
+  rd->R  = 0;
+  rd->H  = 0;
+  rd->nz = 0;
+  rd->score = MAX_COST;
+}
+
 const uint16_t VP8FixedCostsI4[NUM_BMODES] =
    {   40, 1151, 1723, 1874, 2103, 2019, 1628, 1777, 2226, 2137 };
 
@@ -1759,6 +1768,10 @@ void VP8Decimate_snap(uint8_t Yin[16*16], uint8_t Yout16[16*16], uint8_t Yout4[1
 #pragma HLS ARRAY_PARTITION variable=rd_i4.modes_i4 complete dim=1
 #pragma HLS ARRAY_PARTITION variable=rd_uv.uv_levels complete dim=0
 #pragma HLS ARRAY_PARTITION variable=rd_uv.derr complete dim=0
+
+  InitScore(&rd_i16);
+  InitScore(&rd_i4);
+  InitScore(&rd_uv);
 
   // We can perform predictions for Luma16x16 and Chroma8x8 already.
   // Luma4x4 predictions needs to be done as-we-go.
