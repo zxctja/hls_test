@@ -1023,6 +1023,11 @@ enum { B_DC_PRED = 0,   // 4x4 modes
 #define RD_DISTO_MULT      256  // distortion multiplier (equivalent of lambda)
 
 static void SetRDScore(int lambda, VP8ModeScore* const rd) {
+#pragma HLS inline off
+  rd->score = (rd->R + rd->H) * lambda + RD_DISTO_MULT * (rd->D + rd->SD);
+}
+
+static void SetRDScore_i4(int lambda, VP8ModeScore* const rd) {
   rd->score = (rd->R + rd->H) * lambda + RD_DISTO_MULT * (rd->D + rd->SD);
 }
 
@@ -1369,7 +1374,7 @@ static int VP8GetCostLuma4(int16_t tmp_levels[16]){
 }
 
 static int PickBestMode(VP8ModeScore rd_tmp[10]){
-
+#pragma HLS inline off
     int best_mode_0;
     int best_mode_1;
     int best_mode_2;
@@ -1474,13 +1479,13 @@ static void PickBestIntra4(VP8SegmentInfo* const dqm, uint8_t Yin[16*16], uint8_
     0 + 12 * 16,  4 + 12 * 16, 8 + 12 * 16, 12 + 12 * 16,
   };
 
-#pragma HLS ARRAY_PARTITION variable=best_blocks complete dim=0
-#pragma HLS ARRAY_PARTITION variable=VP8Scan complete dim=1
 #pragma HLS ARRAY_PARTITION variable=left complete dim=1
 #pragma HLS ARRAY_PARTITION variable=top complete dim=1
 #pragma HLS ARRAY_PARTITION variable=top_right complete dim=1
-#pragma HLS ARRAY_PARTITION variable=src complete dim=0
 #pragma HLS ARRAY_PARTITION variable=top_mem complete dim=1
+#pragma HLS ARRAY_PARTITION variable=VP8Scan complete dim=1
+#pragma HLS ARRAY_PARTITION variable=src complete dim=0
+#pragma HLS ARRAY_PARTITION variable=best_blocks complete dim=0
 
   top_left = y_top_left;
   for (i = 0; i < 4; i++) {
@@ -1507,17 +1512,17 @@ static void PickBestIntra4(VP8SegmentInfo* const dqm, uint8_t Yin[16*16], uint8_
   VP8ModeScore rd_i4;
   int mode;
   int best_mode;
-  uint8_t tmp_pred[NUM_BMODES][16];    // scratch buffer.
   VP8ModeScore rd_tmp[NUM_BMODES];
+  uint8_t tmp_pred[NUM_BMODES][16];    // scratch buffer.
   int16_t tmp_levels[NUM_BMODES][16];
   uint8_t tmp_dst[NUM_BMODES][16];
 
+#pragma HLS ARRAY_PARTITION variable=rd_tmp complete dim=1
+#pragma HLS ARRAY_PARTITION variable=kWeightY complete dim=1
+#pragma HLS ARRAY_PARTITION variable=VP8FixedCostsI4 complete dim=1
+#pragma HLS ARRAY_PARTITION variable=tmp_pred complete dim=0
 #pragma HLS ARRAY_PARTITION variable=tmp_dst complete dim=0
 #pragma HLS ARRAY_PARTITION variable=tmp_levels complete dim=0
-#pragma HLS ARRAY_PARTITION variable=rd_tmp complete dim=1
-#pragma HLS ARRAY_PARTITION variable=VP8FixedCostsI4 complete dim=1
-#pragma HLS ARRAY_PARTITION variable=kWeightY complete dim=1
-#pragma HLS ARRAY_PARTITION variable=tmp_pred complete dim=0
 
   for (i4_ = 0; i4_ < 16; i4_++){
 
@@ -1535,7 +1540,7 @@ static void PickBestIntra4(VP8SegmentInfo* const dqm, uint8_t Yin[16*16], uint8_
       rd_tmp[mode].H = VP8FixedCostsI4[mode];
 	  rd_tmp[mode].R = VP8GetCostLuma4(tmp_levels[mode]);
 
-      SetRDScore(lambda, &rd_tmp[mode]);
+      SetRDScore_i4(lambda, &rd_tmp[mode]);
     }
 
     best_mode = PickBestMode(rd_tmp);
@@ -1544,7 +1549,7 @@ static void PickBestIntra4(VP8SegmentInfo* const dqm, uint8_t Yin[16*16], uint8_
 	Copy_16_int16(rd->y_ac_levels[i4_], tmp_levels[best_mode]);
 	Copy_16_uint8(best_blocks[i4_], tmp_dst[best_mode]);
 
-    SetRDScore(dqm->lambda_mode_, &rd_i4);
+    SetRDScore_i4(dqm->lambda_mode_, &rd_i4);
     AddScore(rd, &rd_i4);
     rd->modes_i4[i4_] = best_mode;
     VP8IteratorRotateI4(y_left, y_top_left, y_top, i4_, top_mem,
@@ -1763,12 +1768,12 @@ void VP8Decimate_snap(uint8_t Yin[16*16], uint8_t Yout16[16*16], uint8_t Yout4[1
   // We can perform predictions for Luma16x16 and Chroma8x8 already.
   // Luma4x4 predictions needs to be done as-we-go.
 
+  PickBestIntra4(dqm, Yin, Yout4, &rd_i4, left_y, top_left_y, top_y);
+
   PickBestIntra16(Yin, Yout16, &rd_i16, dqm, left_y, top_y, top_left_y, x, y);
 
   PickBestUV(dqm, UVin, UVout, &rd_uv, top_derr, left_derr, left_u, top_u,
 		  top_left_u, left_v, top_v, top_left_v, x,  y);
-
-  PickBestIntra4(dqm, Yin, Yout4, &rd_i4, left_y, top_left_y, top_y);
 
   if (rd_i4.score >= rd_i16.score) {
 	*mbtype = 1;
