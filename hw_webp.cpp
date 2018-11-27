@@ -97,18 +97,6 @@ static void TrueMotion_16(uint8_t* dst, uint8_t* left, uint8_t* top, uint8_t top
   }
 }
 
-static void Intra16Preds_C(uint8_t YPred[4][16*16], uint8_t left_y[16],
-		uint8_t top_y[20], uint8_t top_left_y, int x, int y) {
-//#pragma HLS pipeline
-//#pragma HLS ARRAY_PARTITION variable=top_y complete dim=1
-//#pragma HLS ARRAY_PARTITION variable=left_y complete dim=1
-//#pragma HLS ARRAY_PARTITION variable=YPred complete dim=0
-  DCMode_16(YPred[0], left_y, top_y, x, y);
-  VerticalPred_16(YPred[2], top_y);
-  HorizontalPred_16(YPred[3], left_y);
-  TrueMotion_16(YPred[1], left_y, top_y, top_left_y, x, y);
-}
-
 static void Fill_8(uint8_t* dst, int value_u, int value_v) {
   int i,j;
   for (j = 0; j < 8; ++j) {
@@ -718,7 +706,7 @@ static int ReconstructIntra16(
 }
 
 static void VP8MatrixLoad(VP8Matrix* dst, VP8Matrix* src){
-#pragma HLS INTERFACE ap_none port=dst register
+//#pragma HLS INTERFACE ap_none port=dst register
 #pragma HLS inline off
 	int i;
 	for(i=0;i<16;i++){
@@ -1148,19 +1136,33 @@ static void PickBestIntra16(uint8_t Yin[16*16], uint8_t Yout[16*16],
   VP8ModeScore rd_tmp;
   int mode;
   uint8_t Yout_tmp[16*16];
-  uint8_t YPred[4][16*16];
+  uint8_t YPred_0[16*16];
+  uint8_t YPred_1[16*16];
+  uint8_t YPred_2[16*16];
+  uint8_t YPred_3[16*16];
+  uint8_t* YPred;
 
 #pragma HLS ARRAY_PARTITION variable=rd_tmp.y_ac_levels complete dim=0
 #pragma HLS ARRAY_PARTITION variable=rd_tmp.y_dc_levels complete dim=1
 #pragma HLS ARRAY_PARTITION variable=Yout_tmp complete dim=1
-#pragma HLS ARRAY_PARTITION variable=YPred complete dim=0
+#pragma HLS ARRAY_PARTITION variable=YPred_0 complete dim=1
+#pragma HLS ARRAY_PARTITION variable=YPred_1 complete dim=1
+#pragma HLS ARRAY_PARTITION variable=YPred_2 complete dim=1
+#pragma HLS ARRAY_PARTITION variable=YPred_3 complete dim=1
 #pragma HLS ARRAY_PARTITION variable=VP8FixedCostsI16 complete dim=1
 
-  Intra16Preds_C(YPred, left_y, top_y, top_left_y, x, y);
+  DCMode_16(YPred_0, left_y, top_y, x, y);
+  VerticalPred_16(YPred_2, top_y);
+  HorizontalPred_16(YPred_3, left_y);
+  TrueMotion_16(YPred_1, left_y, top_y, top_left_y, x, y);
 
   for (mode = 0; mode < NUM_PRED_MODES; ++mode) {
+	if(mode == 0) YPred = YPred_0;
+	if(mode == 1) YPred = YPred_1;
+	if(mode == 2) YPred = YPred_2;
+	if(mode == 3) YPred = YPred_3;
     // Reconstruct
-	rd_tmp.nz = ReconstructIntra16(YPred[mode], Yin, Yout_tmp, rd_tmp.y_ac_levels,
+	rd_tmp.nz = ReconstructIntra16(YPred, Yin, Yout_tmp, rd_tmp.y_ac_levels,
     		rd_tmp.y_dc_levels, dqm->y1_, dqm->y2_);
 
     // Measure RD-score
