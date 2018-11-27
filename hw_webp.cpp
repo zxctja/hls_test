@@ -1140,6 +1140,7 @@ static void PickBestIntra16(uint8_t Yin[16*16], uint8_t Yout[16*16],
   uint8_t YPred_1[16*16];
   uint8_t YPred_2[16*16];
   uint8_t YPred_3[16*16];
+  uint8_t YPred[16*16];
 
 #pragma HLS ARRAY_PARTITION variable=rd_tmp.y_ac_levels complete dim=0
 #pragma HLS ARRAY_PARTITION variable=rd_tmp.y_dc_levels complete dim=1
@@ -1156,14 +1157,22 @@ static void PickBestIntra16(uint8_t Yin[16*16], uint8_t Yout[16*16],
   TrueMotion_16(YPred_1, left_y, top_y, top_left_y, x, y);
 
   for (mode = 0; mode < NUM_PRED_MODES; ++mode) {
+	switch(mode){
+	case 0:
+		Copy_256_uint8(YPred, YPred_0);
+		break;
+	case 1:
+		Copy_256_uint8(YPred, YPred_1);
+		break;
+	case 2:
+		Copy_256_uint8(YPred, YPred_2);
+		break;
+	case 3:
+		Copy_256_uint8(YPred, YPred_3);
+		break;
+	}
 	// Reconstruct
-	if(mode == 0) rd_tmp.nz = ReconstructIntra16(YPred_0, Yin, Yout_tmp, rd_tmp.y_ac_levels,
-    		rd_tmp.y_dc_levels, dqm->y1_, dqm->y2_);
-	if(mode == 1) rd_tmp.nz = ReconstructIntra16(YPred_1, Yin, Yout_tmp, rd_tmp.y_ac_levels,
-    		rd_tmp.y_dc_levels, dqm->y1_, dqm->y2_);
-	if(mode == 2) rd_tmp.nz = ReconstructIntra16(YPred_2, Yin, Yout_tmp, rd_tmp.y_ac_levels,
-    		rd_tmp.y_dc_levels, dqm->y1_, dqm->y2_);
-	if(mode == 3) rd_tmp.nz = ReconstructIntra16(YPred_3, Yin, Yout_tmp, rd_tmp.y_ac_levels,
+    rd_tmp.nz = ReconstructIntra16(YPred, Yin, Yout_tmp, rd_tmp.y_ac_levels,
     		rd_tmp.y_dc_levels, dqm->y1_, dqm->y2_);
 
     // Measure RD-score
