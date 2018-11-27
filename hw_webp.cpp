@@ -1111,25 +1111,25 @@ static void Copy_16_uint8(uint8_t dst[16], uint8_t src[16]){
 	}
 }
 
-static void PickBestIntra16(uint8_t Yin[16*16], uint8_t Yout[16*16],
+void PickBestIntra16(uint8_t Yin[16*16], uint8_t Yout[16*16],
 		VP8ModeScore* rd, VP8SegmentInfo* const dqm, uint8_t left_y[16],
 		uint8_t top_y[20], uint8_t top_left_y, int x, int y) {
-//#pragma HLS ARRAY_PARTITION variable=Yout complete dim=1
-//#pragma HLS ARRAY_PARTITION variable=Yin complete dim=1
-//#pragma HLS ARRAY_PARTITION variable=rd->y_ac_levels complete dim=0
-//#pragma HLS ARRAY_PARTITION variable=rd->y_dc_levels complete dim=1
-//#pragma HLS ARRAY_PARTITION variable=dqm->y1_.sharpen_ complete dim=1
-//#pragma HLS ARRAY_PARTITION variable=dqm->y1_.zthresh_ complete dim=1
-//#pragma HLS ARRAY_PARTITION variable=dqm->y1_.bias_ complete dim=1
-//#pragma HLS ARRAY_PARTITION variable=dqm->y1_.iq_ complete dim=1
-//#pragma HLS ARRAY_PARTITION variable=dqm->y1_.q_ complete dim=1
-//#pragma HLS ARRAY_PARTITION variable=dqm->y2_.sharpen_ complete dim=1
-//#pragma HLS ARRAY_PARTITION variable=dqm->y2_.zthresh_ complete dim=1
-//#pragma HLS ARRAY_PARTITION variable=dqm->y2_.bias_ complete dim=1
-//#pragma HLS ARRAY_PARTITION variable=dqm->y2_.iq_ complete dim=1
-//#pragma HLS ARRAY_PARTITION variable=dqm->y2_.q_ complete dim=1
-//#pragma HLS ARRAY_PARTITION variable=top_y complete dim=1
-//#pragma HLS ARRAY_PARTITION variable=left_y complete dim=1
+#pragma HLS ARRAY_PARTITION variable=Yout complete dim=1
+#pragma HLS ARRAY_PARTITION variable=Yin complete dim=1
+#pragma HLS ARRAY_PARTITION variable=rd->y_ac_levels complete dim=0
+#pragma HLS ARRAY_PARTITION variable=rd->y_dc_levels complete dim=1
+#pragma HLS ARRAY_PARTITION variable=dqm->y1_.sharpen_ complete dim=1
+#pragma HLS ARRAY_PARTITION variable=dqm->y1_.zthresh_ complete dim=1
+#pragma HLS ARRAY_PARTITION variable=dqm->y1_.bias_ complete dim=1
+#pragma HLS ARRAY_PARTITION variable=dqm->y1_.iq_ complete dim=1
+#pragma HLS ARRAY_PARTITION variable=dqm->y1_.q_ complete dim=1
+#pragma HLS ARRAY_PARTITION variable=dqm->y2_.sharpen_ complete dim=1
+#pragma HLS ARRAY_PARTITION variable=dqm->y2_.zthresh_ complete dim=1
+#pragma HLS ARRAY_PARTITION variable=dqm->y2_.bias_ complete dim=1
+#pragma HLS ARRAY_PARTITION variable=dqm->y2_.iq_ complete dim=1
+#pragma HLS ARRAY_PARTITION variable=dqm->y2_.q_ complete dim=1
+#pragma HLS ARRAY_PARTITION variable=top_y complete dim=1
+#pragma HLS ARRAY_PARTITION variable=left_y complete dim=1
 
   const int lambda = dqm->lambda_i16_;
   const int tlambda = dqm->tlambda_;
@@ -1140,7 +1140,6 @@ static void PickBestIntra16(uint8_t Yin[16*16], uint8_t Yout[16*16],
   uint8_t YPred_1[16*16];
   uint8_t YPred_2[16*16];
   uint8_t YPred_3[16*16];
-  uint8_t* YPred;
 
 #pragma HLS ARRAY_PARTITION variable=rd_tmp.y_ac_levels complete dim=0
 #pragma HLS ARRAY_PARTITION variable=rd_tmp.y_dc_levels complete dim=1
@@ -1157,12 +1156,14 @@ static void PickBestIntra16(uint8_t Yin[16*16], uint8_t Yout[16*16],
   TrueMotion_16(YPred_1, left_y, top_y, top_left_y, x, y);
 
   for (mode = 0; mode < NUM_PRED_MODES; ++mode) {
-	if(mode == 0) YPred = YPred_0;
-	if(mode == 1) YPred = YPred_1;
-	if(mode == 2) YPred = YPred_2;
-	if(mode == 3) YPred = YPred_3;
-    // Reconstruct
-	rd_tmp.nz = ReconstructIntra16(YPred, Yin, Yout_tmp, rd_tmp.y_ac_levels,
+	// Reconstruct
+	if(mode == 0) rd_tmp.nz = ReconstructIntra16(YPred_0, Yin, Yout_tmp, rd_tmp.y_ac_levels,
+    		rd_tmp.y_dc_levels, dqm->y1_, dqm->y2_);
+	if(mode == 1) rd_tmp.nz = ReconstructIntra16(YPred_1, Yin, Yout_tmp, rd_tmp.y_ac_levels,
+    		rd_tmp.y_dc_levels, dqm->y1_, dqm->y2_);
+	if(mode == 2) rd_tmp.nz = ReconstructIntra16(YPred_2, Yin, Yout_tmp, rd_tmp.y_ac_levels,
+    		rd_tmp.y_dc_levels, dqm->y1_, dqm->y2_);
+	if(mode == 3) rd_tmp.nz = ReconstructIntra16(YPred_3, Yin, Yout_tmp, rd_tmp.y_ac_levels,
     		rd_tmp.y_dc_levels, dqm->y1_, dqm->y2_);
 
     // Measure RD-score
