@@ -1111,25 +1111,25 @@ static void Copy_16_uint8(uint8_t dst[16], uint8_t src[16]){
 	}
 }
 
-void PickBestIntra16(uint8_t Yin[16*16], uint8_t Yout[16*16],
+static void PickBestIntra16(uint8_t Yin[16*16], uint8_t Yout[16*16],
 		VP8ModeScore* rd, VP8SegmentInfo* const dqm, uint8_t left_y[16],
 		uint8_t top_y[20], uint8_t top_left_y, int x, int y) {
-#pragma HLS ARRAY_PARTITION variable=Yout complete dim=1
-#pragma HLS ARRAY_PARTITION variable=Yin complete dim=1
-#pragma HLS ARRAY_PARTITION variable=rd->y_ac_levels complete dim=0
-#pragma HLS ARRAY_PARTITION variable=rd->y_dc_levels complete dim=1
-#pragma HLS ARRAY_PARTITION variable=dqm->y1_.sharpen_ complete dim=1
-#pragma HLS ARRAY_PARTITION variable=dqm->y1_.zthresh_ complete dim=1
-#pragma HLS ARRAY_PARTITION variable=dqm->y1_.bias_ complete dim=1
-#pragma HLS ARRAY_PARTITION variable=dqm->y1_.iq_ complete dim=1
-#pragma HLS ARRAY_PARTITION variable=dqm->y1_.q_ complete dim=1
-#pragma HLS ARRAY_PARTITION variable=dqm->y2_.sharpen_ complete dim=1
-#pragma HLS ARRAY_PARTITION variable=dqm->y2_.zthresh_ complete dim=1
-#pragma HLS ARRAY_PARTITION variable=dqm->y2_.bias_ complete dim=1
-#pragma HLS ARRAY_PARTITION variable=dqm->y2_.iq_ complete dim=1
-#pragma HLS ARRAY_PARTITION variable=dqm->y2_.q_ complete dim=1
-#pragma HLS ARRAY_PARTITION variable=top_y complete dim=1
-#pragma HLS ARRAY_PARTITION variable=left_y complete dim=1
+//#pragma HLS ARRAY_PARTITION variable=Yout complete dim=1
+//#pragma HLS ARRAY_PARTITION variable=Yin complete dim=1
+//#pragma HLS ARRAY_PARTITION variable=rd->y_ac_levels complete dim=0
+//#pragma HLS ARRAY_PARTITION variable=rd->y_dc_levels complete dim=1
+//#pragma HLS ARRAY_PARTITION variable=dqm->y1_.sharpen_ complete dim=1
+//#pragma HLS ARRAY_PARTITION variable=dqm->y1_.zthresh_ complete dim=1
+//#pragma HLS ARRAY_PARTITION variable=dqm->y1_.bias_ complete dim=1
+//#pragma HLS ARRAY_PARTITION variable=dqm->y1_.iq_ complete dim=1
+//#pragma HLS ARRAY_PARTITION variable=dqm->y1_.q_ complete dim=1
+//#pragma HLS ARRAY_PARTITION variable=dqm->y2_.sharpen_ complete dim=1
+//#pragma HLS ARRAY_PARTITION variable=dqm->y2_.zthresh_ complete dim=1
+//#pragma HLS ARRAY_PARTITION variable=dqm->y2_.bias_ complete dim=1
+//#pragma HLS ARRAY_PARTITION variable=dqm->y2_.iq_ complete dim=1
+//#pragma HLS ARRAY_PARTITION variable=dqm->y2_.q_ complete dim=1
+//#pragma HLS ARRAY_PARTITION variable=top_y complete dim=1
+//#pragma HLS ARRAY_PARTITION variable=left_y complete dim=1
 
   const int lambda = dqm->lambda_i16_;
   const int tlambda = dqm->tlambda_;
