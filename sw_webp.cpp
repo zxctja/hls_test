@@ -16369,7 +16369,7 @@ int VP8EncTokenLoop(VP8Encoder* const enc) {
       }
 	  
       distortion += info.D;
-      //StoreSideInfo(&it);
+      StoreSideInfo(&it);
 
       VP8IteratorSaveBoundary_snap(&data_it);
 
