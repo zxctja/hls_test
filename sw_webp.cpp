@@ -16349,6 +16349,8 @@ int VP8EncTokenLoop(VP8Encoder* const enc) {
 	  
       ok = RecordTokens(&it, &info, &enc->tokens_);
 
+      StoreSideInfo(&it);
+
 	  if((data_it.x + 1) == data_it.mb_w){
 	  	++it.y_;
 		//it.bw_ = &enc->parts_[it.y_ & (enc->num_parts_ - 1)];
@@ -16369,7 +16371,6 @@ int VP8EncTokenLoop(VP8Encoder* const enc) {
       }
 	  
       distortion += info.D;
-      StoreSideInfo(&it);
 
       VP8IteratorSaveBoundary_snap(&data_it);
 
