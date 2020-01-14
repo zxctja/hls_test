@@ -17383,6 +17383,8 @@ int main(int argc, const char *argv[]) {
       }
     } else if (!strcmp(argv[c], "-q") && c < argc - 1) {
       config.quality = ExUtilGetFloat(argv[++c], &parse_error);
+    } else if (!strcmp(argv[c], "-segments") && c < argc - 1) {
+      config.segments = ExUtilGetInt(argv[++c], 0, &parse_error);
     } else if (!strcmp(argv[c], "-version")) {
       const int version = WebPGetEncoderVersion();
       printf("%d.%d.%d\n",
