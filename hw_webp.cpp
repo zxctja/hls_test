@@ -1157,7 +1157,7 @@ static void PickBestIntra16(uint8_t Yin[16*16], uint8_t Yout[16*16],
   HorizontalPred_16(YPred_3, left_y);
   TrueMotion_16(YPred_1, left_y, top_y, top_left_y, x, y);
 
-  for (mode = 0; mode < NUM_PRED_MODES; ++mode) {
+  for (mode = NUM_PRED_MODES - 1; mode >= 0; --mode) {
 	switch(mode){
 	case 0:
 		Copy_256_uint8(YPred, YPred_0);
@@ -1185,7 +1185,7 @@ static void PickBestIntra16(uint8_t Yin[16*16], uint8_t Yout[16*16],
     // Since we always examine Intra16 first, we can overwrite *rd directly.
     SetRDScore(lambda, &rd_tmp);
 
-    if (mode == 0 || rd_tmp.score < rd->score) {
+    if (mode == NUM_PRED_MODES - 1 || rd_tmp.score <= rd->score) {
       rd->mode_i16 = mode;
       CopyScore(rd, &rd_tmp);
       Copy_16x16_int16(rd->y_ac_levels, rd_tmp.y_ac_levels);
@@ -1721,7 +1721,7 @@ static void PickBestUV(VP8SegmentInfo* const dqm, uint8_t UVin[8*16], uint8_t UV
 	}
   }
 
-  for (mode = 0; mode < NUM_PRED_MODES; mode++) {
+  for (mode = NUM_PRED_MODES - 1; mode >= 0 ; mode++) {
     VP8ModeScore rd_uv;
 #pragma HLS ARRAY_PARTITION variable=rd_uv.uv_levels complete dim=0
 #pragma HLS ARRAY_PARTITION variable=rd_uv.derr complete dim=0
@@ -1737,7 +1737,7 @@ static void PickBestUV(VP8SegmentInfo* const dqm, uint8_t UVin[8*16], uint8_t UV
 
     SetRDScore(lambda, &rd_uv);
 
-    if (mode == 0 || rd_uv.score < rd->score) {
+    if (mode == NUM_PRED_MODES - 1 || rd_uv.score <= rd->score) {
       CopyScore(rd, &rd_uv);
       rd->mode_uv = mode;
 	  CopyUVLevel(rd->uv_levels, rd_uv.uv_levels);
