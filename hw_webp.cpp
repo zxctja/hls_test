@@ -1721,7 +1721,7 @@ static void PickBestUV(VP8SegmentInfo* const dqm, uint8_t UVin[8*16], uint8_t UV
 	}
   }
 
-  for (mode = NUM_PRED_MODES - 1; mode >= 0 ; mode++) {
+  for (mode = NUM_PRED_MODES - 1; mode >= 0 ; mode--) {
     VP8ModeScore rd_uv;
 #pragma HLS ARRAY_PARTITION variable=rd_uv.uv_levels complete dim=0
 #pragma HLS ARRAY_PARTITION variable=rd_uv.derr complete dim=0
