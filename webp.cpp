@@ -14262,7 +14262,7 @@ static const uint16_t kWeightY[16] = {
 #define RD_DISTO_MULT      256  // distortion multiplier (equivalent of lambda)
 
 static void SetRDScore(int lambda, VP8ModeScore* const rd) {
-  rd->score = (rd->R + rd->H) * lambda + RD_DISTO_MULT * (rd->D + rd->SD);
+  rd->score = (rd->R + rd->H) * lambda + RD_DISTO_MULT * rd->D + rd->SD;
 }
 
 static void SwapModeScore(VP8ModeScore** a, VP8ModeScore** b) {
@@ -14435,8 +14435,7 @@ static void PickBestIntra16(VP8EncIterator* const it, VP8ModeScore* rd) {
 
     // Measure RD-score
     rd_cur->D = SSE16x16_C(src, tmp_dst);
-    rd_cur->SD =
-        tlambda ? MULT_8B(tlambda, Disto16x16_C(src, tmp_dst, kWeightY)) : 0;
+    rd_cur->SD = tlambda * Disto16x16_C(src, tmp_dst, kWeightY);
     rd_cur->H = VP8FixedCostsI16[mode];
     rd_cur->R = VP8GetCostLuma16(rd_cur);
 	
@@ -14569,9 +14568,7 @@ static int PickBestIntra4(VP8EncIterator* const it, VP8ModeScore* const rd) {
 
       // Compute RD-score
       rd_tmp.D = SSE4x4_C(src, tmp_dst);
-      rd_tmp.SD =
-          tlambda ? MULT_8B(tlambda, Disto4x4_C(src, tmp_dst, kWeightY))
-                  : 0;
+      rd_tmp.SD = tlambda * Disto4x4_C(src, tmp_dst, kWeightY);
       rd_tmp.H = mode_costs[mode];
       rd_tmp.R = VP8GetCostLuma4(tmp_levels);
 	  
