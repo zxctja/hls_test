@@ -1034,11 +1034,11 @@ enum { B_DC_PRED = 0,   // 4x4 modes
 
 static void SetRDScore(int lambda, VP8ModeScore* const rd) {
 #pragma HLS inline off
-  rd->score = (rd->R + rd->H) * lambda + RD_DISTO_MULT * (rd->D + rd->SD);
+  rd->score = (rd->R + rd->H) * lambda + RD_DISTO_MULT * rd->D + rd->SD;
 }
 
 static void SetRDScore_i4(int lambda, VP8ModeScore* const rd) {
-  rd->score = (rd->R + rd->H) * lambda + RD_DISTO_MULT * (rd->D + rd->SD);
+  rd->score = (rd->R + rd->H) * lambda + RD_DISTO_MULT * rd->D + rd->SD;
 }
 
 static void StoreMaxDelta(VP8SegmentInfo* const dqm, const int16_t DCs[16]) {
@@ -1178,7 +1178,7 @@ static void PickBestIntra16(uint8_t Yin[16*16], uint8_t Yout[16*16],
 
     // Measure RD-score
 	rd_tmp.D = GetSSE16x16(Yin, Yout_tmp);
-	rd_tmp.SD = MULT_8B(tlambda, Disto16x16_C(Yin, Yout_tmp, kWeightY));
+	rd_tmp.SD = tlambda * Disto16x16_C(Yin, Yout_tmp, kWeightY);
 	rd_tmp.H = VP8FixedCostsI16[mode];
 	rd_tmp.R = VP8GetCostLuma16(rd_tmp.y_ac_levels, rd_tmp.y_dc_levels);
 
@@ -1571,7 +1571,7 @@ static void PickBestIntra4(VP8SegmentInfo* const dqm, uint8_t Yin[16*16], uint8_
 
       // Compute RD-score
       rd_tmp[mode].D = GetSSE4x4(src[i4_], tmp_dst[mode]);
-      rd_tmp[mode].SD = MULT_8B(tlambda, Disto4x4_C(src[i4_], tmp_dst[mode], kWeightY));
+      rd_tmp[mode].SD = tlambda * Disto4x4_C(src[i4_], tmp_dst[mode], kWeightY);
       rd_tmp[mode].H = VP8FixedCostsI4[mode];
 	  rd_tmp[mode].R = VP8GetCostLuma4(tmp_levels[mode]);
 
