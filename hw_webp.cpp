@@ -1812,12 +1812,12 @@ void VP8Decimate_snap(uint8_t Yin[16*16], uint8_t Yout16[16*16], uint8_t Yout4[1
 
   if (rd_i4.score >= rd_i16.score) {
 	*mbtype = 1;
-    rd->nz = rd_i16.nz | rd_uv.nz;
+    rd->nz = (rd_i16.nz & 0x0100ffff) | (rd_uv.nz & 0x00ff0000);
 	Copy_16x16_int16(rd->y_ac_levels, rd_i16.y_ac_levels);
   }
   else{
     *mbtype = 0;
-    rd->nz = rd_i4.nz | rd_uv.nz;
+    rd->nz = (rd_i4.nz & 0x0000ffff) | (rd_uv.nz & 0x00ff0000);
 	Copy_16x16_int16(rd->y_ac_levels, rd_i4.y_ac_levels);
   }
 
