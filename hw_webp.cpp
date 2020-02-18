@@ -1793,6 +1793,9 @@ void VP8Decimate_snap(uint8_t Yin[16*16], uint8_t Yout16[16*16], uint8_t Yout4[1
   VP8ModeScore rd_i16;
   VP8ModeScore rd_i4;
   VP8ModeScore rd_uv;
+  
+  rd_i4.nz = 0;
+  
 #pragma HLS ARRAY_PARTITION variable=rd_i16.y_dc_levels complete dim=1
 #pragma HLS ARRAY_PARTITION variable=rd_i16.y_ac_levels complete dim=0
 #pragma HLS ARRAY_PARTITION variable=rd_i4.y_ac_levels complete dim=0
