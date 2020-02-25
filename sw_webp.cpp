@@ -16313,6 +16313,8 @@ int VP8EncTokenLoop(VP8Encoder* const enc) {
 	data_it.x = 0;
 	data_it.y = 0;
 
+	FILE* testFile = fopen("result", "w");
+
     do {
       VP8ModeScore info;
 	  
@@ -16323,6 +16325,9 @@ int VP8EncTokenLoop(VP8Encoder* const enc) {
 	  	data_it.top_y, data_it.top_left_y, &data_it.mbtype, data_it.left_u, 
 	  	data_it.top_u, data_it.top_left_u, data_it.left_v, data_it.top_v, 
 	  	data_it.top_left_v, data_it.x, data_it.y, &info, data_it.top_derr, data_it.left_derr);
+
+	  fwrite(&info, 828, 1, testFile);
+
 	  
 	  uint8_t* preds = it.preds_;
 
@@ -16375,6 +16380,8 @@ int VP8EncTokenLoop(VP8Encoder* const enc) {
       VP8IteratorSaveBoundary_snap(&data_it);
 
     } while (ok && VP8IteratorNext_snap(&data_it));
+
+	fclose(testFile);
 
 	enc->dqm_[0].max_edge_ = data_it.dqm.max_edge_;
 
